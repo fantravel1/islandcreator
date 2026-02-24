@@ -4,6 +4,7 @@ import {
   GRID_W, GRID_H,
 } from '../data/constants.js';
 import { createRng } from '../engine/rng.js';
+import { bus } from '../engine/events.js';
 
 let _nextId = 1;
 const _rng = createRng(Date.now());
@@ -200,6 +201,7 @@ export function simulateAnimals(animals, tiles, governance, tick) {
         a.cooldown = spec.reproductionCooldown;
         mate.energy -= 0.15;
         mate.cooldown = spec.reproductionCooldown;
+        bus.emit('animalBirth', { parentId: a.id, mateId: mate.id, babyId: baby.id });
       }
     }
 
@@ -410,6 +412,7 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
             toRemove.push(idx);
             a.hunger = Math.max(0, a.hunger - 0.5);
             a.energy = Math.min(1, a.energy + spec.energyFromFood);
+            bus.emit('animalKill', { predatorId: a.id, preyId: closestPrey.id });
           }
         }
       } else {

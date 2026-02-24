@@ -69,8 +69,51 @@ export const SPECIES = {
     size: 3,
     prey: ['rabbit'],
   },
+  // --- Unlockable species ---
+  fox: {
+    id: 'fox',
+    name: 'Fox',
+    type: 'predator',
+    color: '#D2691E',
+    emoji: '🦊',
+    speed: 0.2,
+    hungerRate: 0.003,
+    thirstRate: 0.002,
+    energyFromFood: 0.2,
+    energyFromWater: 0.1,
+    reproductionThreshold: 0.7,
+    reproductionCooldown: 300,
+    maxAge: 2500,
+    sightRange: 8,
+    size: 4,
+    prey: ['rabbit'],
+    unlockScore: 45, // C-grade ecoscore
+    unlockLabel: 'Reach C-grade ecosystem',
+  },
+  turtle: {
+    id: 'turtle',
+    name: 'Sea Turtle',
+    type: 'herbivore',
+    color: '#2E8B57',
+    emoji: '🐢',
+    speed: 0.06,
+    hungerRate: 0.001,
+    thirstRate: 0.0005,
+    energyFromFood: 0.1,
+    energyFromWater: 0.12,
+    reproductionThreshold: 0.9,
+    reproductionCooldown: 600,
+    maxAge: 6000, // Very long-lived
+    sightRange: 4,
+    size: 3,
+    unlockScore: 60, // B-grade ecoscore
+    unlockLabel: 'Reach B-grade ecosystem',
+    coastal: true, // Prefers coastal areas
+  },
 };
 
 export const SPECIES_LIST = Object.values(SPECIES);
+export const BASE_SPECIES = SPECIES_LIST.filter(s => !s.unlockScore);
+export const UNLOCK_SPECIES = SPECIES_LIST.filter(s => s.unlockScore);
 export const HERBIVORES = SPECIES_LIST.filter(s => s.type === 'herbivore');
 export const PREDATORS = SPECIES_LIST.filter(s => s.type === 'predator');
