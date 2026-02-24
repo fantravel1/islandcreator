@@ -31,7 +31,7 @@ import { saveGame } from './storage/save.js';
 import { loadGame, hasSave } from './storage/load.js';
 import { migrate } from './storage/migrations.js';
 import { createAnimal } from './sim/animals.js';
-import { GRID_W, GRID_H, AUTOSAVE_INTERVAL } from './data/constants.js';
+import { GRID_W, GRID_H, AUTOSAVE_INTERVAL, GRACE_PERIOD_TICKS, SIM_TICK_MS } from './data/constants.js';
 import { BASE_SPECIES } from './data/species.js';
 import { createRng } from './engine/rng.js';
 import { MilestoneSystem } from './sim/milestones.js';
@@ -58,6 +58,7 @@ function createNewGameState(seed, islandName) {
         population: {}, totalAnimals: 0,
         avgSoil: 0, avgVeg: 0, avgWater: 0,
         landTiles: 0, protectedTiles: 0, developedTiles: 0,
+        oceanRatio: 0,
       },
     }],
     flags: { tutorialDone: false, achievements: [], achievementCounters: {} },
@@ -328,7 +329,6 @@ function startGame(gameState) {
   });
   scheduler.add('minimap', 2000, (now) => minimap.update(now));
   scheduler.add('audio', 5000, () => audio.setSeason(gameState.time.season));
-  scheduler.add('collapse', 8000, () => checkCollapseRisks(gameState));
   scheduler.add('ecoscore', 4000, () => {
     const score = computeEcoScore(gameState);
     const rating = getEcoRating(score);
@@ -339,15 +339,21 @@ function startGame(gameState) {
     setEcoScoreForEvents(score);
     setEcoScoreForSim(score);
   });
-  scheduler.add('achievements', 5000, () => {
-    achievements.check(gameState);
-  });
-  scheduler.add('milestones', 5000, () => {
-    milestones.check(gameState);
-  });
-  scheduler.add('notables', 5000, () => {
-    notables.update(gameState.islands[0].entities.animals);
-  });
+
+  // Delay event-heavy systems until after the grace period so the start is calm
+  const graceMs = GRACE_PERIOD_TICKS * SIM_TICK_MS;
+  setTimeout(() => {
+    scheduler.add('collapse', 8000, () => checkCollapseRisks(gameState));
+    scheduler.add('achievements', 5000, () => {
+      achievements.check(gameState);
+    });
+    scheduler.add('milestones', 5000, () => {
+      milestones.check(gameState);
+    });
+    scheduler.add('notables', 5000, () => {
+      notables.update(gameState.islands[0].entities.animals);
+    });
+  }, graceMs);
 
   // Initial stats
   computeStats(gameState.islands[0]);
@@ -387,14 +393,14 @@ function startGame(gameState) {
   // Start
   gameLoop.start();
 
-  // Initial story
+  // Gentle intro — just a single quiet welcome, no chapter fanfare yet
   setTimeout(() => {
     bus.emit('storyEvent', {
-      text: `Welcome to ${gameState.islands[0].name}. Your story begins here.`,
-      type: 'chapter',
-      detail: 'Nurture life, build settlements, and shape this island into a legend.',
+      text: `Welcome to ${gameState.islands[0].name}.`,
+      type: 'event',
+      detail: 'Take a moment to explore. Life is already stirring.',
     });
-  }, 1200);
+  }, 2500);
 }
 
 function boot() {

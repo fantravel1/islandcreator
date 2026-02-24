@@ -57,6 +57,9 @@ export const TOOL_BUILD = 'build';
 export const BRUSH_RADIUS = 3;
 export const SCULPT_STRENGTH = 0.02;
 
+// Early game pacing — suppress most events during this window
+export const GRACE_PERIOD_TICKS = 3000; // ~5 real minutes of calm at game start
+
 // Animals
 export const MAX_ANIMALS = 200;
 export const ANIMAL_SIGHT_RANGE = 8;

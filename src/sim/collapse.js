@@ -11,6 +11,8 @@ const THRESHOLDS = {
   overDeveloped: 0.35,
   speciesEndangered: 3,
   noVegTiles: 0.6, // 60%+ land tiles with veg < 0.05
+  oceanLow: 0.12,       // ocean coverage dangerously low
+  oceanCritical: 0.05,  // almost no ocean left — catastrophe
 };
 
 export function checkCollapseRisks(gameState) {
@@ -96,6 +98,29 @@ export function checkCollapseRisks(gameState) {
       type: 'danger',
       icon: '🌾',
       message: `${((bareLand / totalLand) * 100).toFixed(0)}% of land is barren. Ecosystem cannot sustain life.`,
+      severity: 3,
+    });
+  }
+
+  // Ocean coverage crisis — water is the lifeblood of the island
+  const oceanRatio = stats.oceanRatio ?? 0;
+  if (oceanRatio < THRESHOLDS.oceanCritical) {
+    warnings.push({
+      type: 'danger',
+      icon: '🌊',
+      message: `CATASTROPHE: Ocean nearly gone (${(oceanRatio * 100).toFixed(0)}%)! The island cannot survive without water. Lower terrain to restore the sea.`,
+      severity: 4,
+    });
+    bus.emit('storyEvent', {
+      text: 'The ocean is vanishing. Without water, all life will perish.',
+      type: 'warning',
+      detail: 'Rivers dry up. Soil turns to dust. Animals collapse from thirst. This island is dying.',
+    });
+  } else if (oceanRatio < THRESHOLDS.oceanLow) {
+    warnings.push({
+      type: 'danger',
+      icon: '🌊',
+      message: `Ocean levels critical (${(oceanRatio * 100).toFixed(0)}%)! Water sustains all life — lower terrain to restore coastline.`,
       severity: 3,
     });
   }

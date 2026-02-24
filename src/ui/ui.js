@@ -6,6 +6,7 @@ import {
   TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
   TOOL_BUILD,
   BRUSH_RADIUS, SCULPT_STRENGTH,
+  BIOME_OCEAN, BIOME_GRASSLAND,
 } from '../data/constants.js';
 import { createAnimal } from '../sim/animals.js';
 import { placeStructure, canPlaceStructure } from '../sim/structures.js';
@@ -126,6 +127,7 @@ export class UI {
     if (!tiles.inBounds(tx, ty)) return;
 
     if (tool === TOOL_INSPECT) {
+      // Priority: animal > structure > tile
       const animals = this.gameState.islands[0].entities.animals;
       let closest = null;
       let closestDist = 4;
@@ -141,7 +143,17 @@ export class UI {
       if (closest) {
         this.inspector.showAnimal(closest);
       } else {
-        this.inspector.showTile(tiles, tx, ty);
+        // Check if tapping on a structure
+        const structures = this.gameState.islands[0].entities.structures || [];
+        const tappedStruct = structures.find(s => {
+          const half = Math.floor((s.size || 1) / 2);
+          return tx >= s.x - half && tx <= s.x + half && ty >= s.y - half && ty <= s.y + half;
+        });
+        if (tappedStruct) {
+          this.inspector.showStructure(tappedStruct);
+        } else {
+          this.inspector.showTile(tiles, tx, ty);
+        }
       }
     } else if (tool === TOOL_ANIMAL) {
       if (tiles.isLand(tx, ty)) {
@@ -241,6 +253,7 @@ export class UI {
 
   _applySculpt(tiles, cx, cy) {
     const dir = this._sculptMode === 'raise' ? 1 : -1;
+    const LAND_THRESHOLD = 0.3;
     for (let dy = -BRUSH_RADIUS; dy <= BRUSH_RADIUS; dy++) {
       for (let dx = -BRUSH_RADIUS; dx <= BRUSH_RADIUS; dx++) {
         if (dx * dx + dy * dy > BRUSH_RADIUS * BRUSH_RADIUS) continue;
@@ -249,8 +262,26 @@ export class UI {
         if (!tiles.inBounds(x, y)) continue;
         const dist = Math.sqrt(dx * dx + dy * dy);
         const falloff = 1 - dist / (BRUSH_RADIUS + 1);
-        const h = tiles.getH(x, y);
-        tiles.setH(x, y, Math.max(0, Math.min(1, h + SCULPT_STRENGTH * dir * falloff)));
+        const oldH = tiles.getH(x, y);
+        const wasOcean = oldH < LAND_THRESHOLD;
+        const newH = Math.max(0, Math.min(1, oldH + SCULPT_STRENGTH * dir * falloff));
+        tiles.setH(x, y, newH);
+        const nowOcean = newH < LAND_THRESHOLD;
+
+        // Convert between water and land when crossing the threshold
+        if (wasOcean && !nowOcean) {
+          // Ocean → Land: create new land with modest starting values
+          tiles.setBiome(x, y, BIOME_GRASSLAND);
+          tiles.setWater(x, y, 0.15);
+          tiles.setSoil(x, y, 0.25);
+          tiles.setVeg(x, y, 0.05);
+        } else if (!wasOcean && nowOcean) {
+          // Land → Ocean: flood the tile
+          tiles.setBiome(x, y, BIOME_OCEAN);
+          tiles.setWater(x, y, 1.0);
+          tiles.setSoil(x, y, 0);
+          tiles.setVeg(x, y, 0);
+        }
       }
     }
     this.gameState._dirty = true;
