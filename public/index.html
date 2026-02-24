@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1a3a4a">
+  <meta name="description" content="Build islands, introduce ecosystems, govern with care. A calm, creation-first mobile game.">
+
+  <title>IslandCreator</title>
+
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="stylesheet" href="/styles.css">
+
+  <!-- Preconnect for performance -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+</head>
+<body>
+  <!-- Loading screen -->
+  <div id="loading">
+    <div class="loading-content">
+      <div class="loading-icon">🏝️</div>
+      <div class="loading-text">IslandCreator</div>
+      <div class="loading-sub">Generating your island...</div>
+    </div>
+  </div>
+
+  <!-- Game canvas -->
+  <canvas id="game-canvas"></canvas>
+
+  <!-- UI overlay -->
+  <div id="ui-container"></div>
+
+  <!-- Entry point -->
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
