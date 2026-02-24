@@ -21,6 +21,8 @@ export const BIOME_OCEAN = 0;
 export const BIOME_FOREST = 1;
 export const BIOME_GRASSLAND = 2;
 export const BIOME_DESERT = 3;
+export const BIOME_TUNDRA = 4;
+export const BIOME_JUNGLE = 5;
 
 // Simulation
 export const SIM_TICK_MS = 100; // 10 ticks per second

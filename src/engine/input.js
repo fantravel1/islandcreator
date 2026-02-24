@@ -3,6 +3,8 @@ import { bus } from './events.js';
 const LONG_PRESS_MS = 500;
 const TAP_MAX_MS = 250;
 const TAP_MAX_DIST = 12;
+const DOUBLE_TAP_MS = 300;
+const DOUBLE_TAP_DIST = 30;
 
 export class InputManager {
   constructor(canvas, camera) {
@@ -16,6 +18,10 @@ export class InputManager {
     this.isPanning = false;
     this.startTime = 0;
     this.startPos = { x: 0, y: 0 };
+    this._lastTapTime = 0;
+    this._lastTapX = 0;
+    this._lastTapY = 0;
+    this._tapTimer = null;
 
     this._onPointerDown = this._onPointerDown.bind(this);
     this._onPointerMove = this._onPointerMove.bind(this);
@@ -119,11 +125,37 @@ export class InputManager {
       const dist = Math.sqrt(dx * dx + dy * dy);
 
       if (!this.isDragging && elapsed < TAP_MAX_MS && dist < TAP_MAX_DIST) {
-        const world = this._screenToWorld(e.clientX, e.clientY);
-        bus.emit('tap', {
-          screenX: e.clientX, screenY: e.clientY,
-          worldX: world.x, worldY: world.y,
-        });
+        const now = performance.now();
+        const dtx = e.clientX - this._lastTapX;
+        const dty = e.clientY - this._lastTapY;
+        const tapDist = Math.sqrt(dtx * dtx + dty * dty);
+        const tapGap = now - this._lastTapTime;
+
+        if (tapGap < DOUBLE_TAP_MS && tapDist < DOUBLE_TAP_DIST) {
+          // Double-tap detected — cancel pending single tap
+          if (this._tapTimer) { clearTimeout(this._tapTimer); this._tapTimer = null; }
+          this._lastTapTime = 0;
+          const world = this._screenToWorld(e.clientX, e.clientY);
+          bus.emit('doubleTap', {
+            screenX: e.clientX, screenY: e.clientY,
+            worldX: world.x, worldY: world.y,
+          });
+        } else {
+          // Delay single tap to allow double-tap detection
+          this._lastTapTime = now;
+          this._lastTapX = e.clientX;
+          this._lastTapY = e.clientY;
+          const cx = e.clientX;
+          const cy = e.clientY;
+          this._tapTimer = setTimeout(() => {
+            this._tapTimer = null;
+            const world = this._screenToWorld(cx, cy);
+            bus.emit('tap', {
+              screenX: cx, screenY: cy,
+              worldX: world.x, worldY: world.y,
+            });
+          }, DOUBLE_TAP_MS);
+        }
       }
 
       if (this.isDragging) {

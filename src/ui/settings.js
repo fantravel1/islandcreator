@@ -9,10 +9,15 @@ export class SettingsPanel {
     this.visible = false;
 
     this._gameState = null;
+    this._achievements = null;
   }
 
   setGameState(gs) {
     this._gameState = gs;
+  }
+
+  setAchievements(achSystem) {
+    this._achievements = achSystem;
   }
 
   toggle() {
@@ -25,6 +30,32 @@ export class SettingsPanel {
 
     const gs = this._gameState;
     const settings = gs?.settings || {};
+
+    // Build achievement progress HTML
+    let achHTML = '';
+    if (this._achievements) {
+      const progress = this._achievements.getProgress();
+      achHTML = `
+        <div class="settings-group">
+          <div class="settings-section-title">Achievements (${progress.unlocked}/${progress.total})</div>
+          <div class="achievement-progress-bar">
+            <div class="achievement-progress-fill" style="width:${(progress.unlocked / progress.total * 100) | 0}%"></div>
+          </div>
+          <div class="achievement-list">
+            ${progress.list.map(a => `
+              <div class="achievement-row ${a.unlocked ? 'unlocked' : 'locked'}">
+                <span class="achievement-row-icon">${a.unlocked ? a.icon : '🔒'}</span>
+                <div class="achievement-row-info">
+                  <span class="achievement-row-name">${a.name}</span>
+                  <span class="achievement-row-desc">${a.desc}</span>
+                </div>
+                ${a.unlocked ? '<span class="achievement-row-check">✓</span>' : ''}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
 
     this.el.innerHTML = `
       <div class="settings-header">
@@ -72,6 +103,7 @@ export class SettingsPanel {
             </select>
           </div>
         </div>
+        ${achHTML}
         <div class="settings-group settings-danger">
           <button class="settings-reset-btn">Reset Island</button>
           <p class="settings-warn">This will delete your save and start fresh.</p>

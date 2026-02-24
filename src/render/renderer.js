@@ -150,10 +150,29 @@ export class Renderer {
     this.overlayMode = OVERLAY_NONE;
     this.showGridLines = true;
     this.showDayNight = true;
+
+    // Offscreen tile buffer for ImageData rendering
+    this._tileCanvas = document.createElement('canvas');
+    this._tileCtx = this._tileCanvas.getContext('2d');
+    this._tileImageData = null;
+    this._blendBuf = null;
+    this._bufW = 0;
+    this._bufH = 0;
   }
 
   markDirty() {
     this.dirty = true;
+  }
+
+  _ensureBuffer(w, h) {
+    if (w !== this._bufW || h !== this._bufH) {
+      this._bufW = w;
+      this._bufH = h;
+      this._tileCanvas.width = w;
+      this._tileCanvas.height = h;
+      this._tileImageData = this._tileCtx.createImageData(w, h);
+      this._blendBuf = new Uint8ClampedArray(w * h * 4);
+    }
   }
 
   render(gameState, timestamp) {
@@ -180,7 +199,14 @@ export class Renderer {
     const oMode = this.overlayMode;
     const oRgb = [0, 0, 0];
 
-    // Draw tiles
+    // --- Fast tile rendering via ImageData buffer ---
+    const tw = range.x2 - range.x1 + 1;
+    const th = range.y2 - range.y1 + 1;
+    this._ensureBuffer(tw, th);
+
+    const pixels = this._tileImageData.data;
+
+    // Pass 1: Compute tile colors into pixel buffer
     for (let y = range.y1; y <= range.y2; y++) {
       for (let x = range.x1; x <= range.x2; x++) {
         let r, g, b;
@@ -192,16 +218,105 @@ export class Renderer {
           r = rgb[0]; g = rgb[1]; b = rgb[2];
         }
 
+        const px = x - range.x1;
+        const py = y - range.y1;
+        const idx = (py * tw + px) * 4;
+        pixels[idx] = r;
+        pixels[idx + 1] = g;
+        pixels[idx + 2] = b;
+        pixels[idx + 3] = 255;
+      }
+    }
+
+    // Pass 2: Biome edge blending (only in normal view mode)
+    if (oMode === OVERLAY_NONE) {
+      // Copy current pixel data to blend source buffer
+      this._blendBuf.set(pixels);
+      const src = this._blendBuf;
+
+      for (let y = range.y1; y <= range.y2; y++) {
+        for (let x = range.x1; x <= range.x2; x++) {
+          const biome = tiles.getBiome(x, y);
+          if (biome === BIOME_OCEAN) continue;
+
+          const px = x - range.x1;
+          const py = y - range.y1;
+          const idx = (py * tw + px) * 4;
+
+          let blendR = 0, blendG = 0, blendB = 0, blendCount = 0;
+
+          // Check 4 cardinal neighbors for different biome
+          if (x > range.x1) {
+            const nb = tiles.getBiome(x - 1, y);
+            if (nb !== biome && nb !== BIOME_OCEAN) {
+              const ni = (py * tw + px - 1) * 4;
+              blendR += src[ni]; blendG += src[ni + 1]; blendB += src[ni + 2];
+              blendCount++;
+            }
+          }
+          if (x < range.x2) {
+            const nb = tiles.getBiome(x + 1, y);
+            if (nb !== biome && nb !== BIOME_OCEAN) {
+              const ni = (py * tw + px + 1) * 4;
+              blendR += src[ni]; blendG += src[ni + 1]; blendB += src[ni + 2];
+              blendCount++;
+            }
+          }
+          if (y > range.y1) {
+            const nb = tiles.getBiome(x, y - 1);
+            if (nb !== biome && nb !== BIOME_OCEAN) {
+              const ni = ((py - 1) * tw + px) * 4;
+              blendR += src[ni]; blendG += src[ni + 1]; blendB += src[ni + 2];
+              blendCount++;
+            }
+          }
+          if (y < range.y2) {
+            const nb = tiles.getBiome(x, y + 1);
+            if (nb !== biome && nb !== BIOME_OCEAN) {
+              const ni = ((py + 1) * tw + px) * 4;
+              blendR += src[ni]; blendG += src[ni + 1]; blendB += src[ni + 2];
+              blendCount++;
+            }
+          }
+
+          if (blendCount > 0) {
+            const factor = 0.25 * blendCount / 4;
+            const inv = 1 - factor;
+            const avgR = blendR / blendCount;
+            const avgG = blendG / blendCount;
+            const avgB = blendB / blendCount;
+            pixels[idx]     = (src[idx]     * inv + avgR * factor) | 0;
+            pixels[idx + 1] = (src[idx + 1] * inv + avgG * factor) | 0;
+            pixels[idx + 2] = (src[idx + 2] * inv + avgB * factor) | 0;
+          }
+        }
+      }
+    }
+
+    // Blit tile buffer to offscreen canvas, then scale to main canvas
+    this._tileCtx.putImageData(this._tileImageData, 0, 0);
+
+    const drawX = (range.x1 * ts + offsetX) | 0;
+    const drawY = (range.y1 * ts + offsetY) | 0;
+    const drawW = (tw * ts) | 0;
+    const drawH = (th * ts) | 0;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(this._tileCanvas, 0, 0, tw, th, drawX, drawY, drawW, drawH);
+
+    // --- Tile overlays (protected zones, developed tiles) ---
+    for (let y = range.y1; y <= range.y2; y++) {
+      for (let x = range.x1; x <= range.x2; x++) {
+        const isProtected = tiles.isProtected(x, y);
+        const isDev = tiles.isDeveloped(x, y);
+        if (!isProtected && !isDev) continue;
+
         const sx = (x * ts + offsetX) | 0;
         const sy = (y * ts + offsetY) | 0;
         const sw = (ts + 1) | 0;
         const sh = (ts + 1) | 0;
 
-        ctx.fillStyle = `rgb(${r},${g},${b})`;
-        ctx.fillRect(sx, sy, sw, sh);
-
-        // Protected zone overlay
-        if (tiles.isProtected(x, y) && !tiles.isOcean(x, y)) {
+        if (isProtected && !tiles.isOcean(x, y)) {
           ctx.fillStyle = 'rgba(0, 200, 100, 0.15)';
           ctx.fillRect(sx, sy, sw, sh);
           if (ts > 4) {
@@ -214,8 +329,7 @@ export class Renderer {
           }
         }
 
-        // Developed tile
-        if (tiles.isDeveloped(x, y)) {
+        if (isDev) {
           ctx.fillStyle = 'rgba(150, 100, 50, 0.25)';
           ctx.fillRect(sx, sy, sw, sh);
           if (ts > 15) {
@@ -246,13 +360,11 @@ export class Renderer {
         const sz = type.size * ts;
 
         if (ts > 15) {
-          // Show emoji at high zoom
           ctx.font = `${sz * 0.7}px serif`;
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
           ctx.fillText(type.emoji, sx + ts * 0.5, sy + ts * 0.5);
         } else {
-          // Simple colored marker at low zoom
           ctx.fillStyle = 'rgba(200, 160, 80, 0.6)';
           const r = Math.floor(type.size / 2);
           ctx.fillRect(sx - r * ts, sy - r * ts, sz, sz);

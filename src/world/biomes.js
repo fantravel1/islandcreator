@@ -1,5 +1,6 @@
 import {
   BIOME_OCEAN, BIOME_FOREST, BIOME_GRASSLAND, BIOME_DESERT,
+  BIOME_TUNDRA, BIOME_JUNGLE,
 } from '../data/constants.js';
 
 export const BIOME_DATA = {
@@ -35,6 +36,22 @@ export const BIOME_DATA = {
     vegGrowthRate: 0.001,
     soilBase: 0.2,
     tempMod: 0.15,
+  },
+  [BIOME_TUNDRA]: {
+    id: BIOME_TUNDRA,
+    name: 'Tundra',
+    baseColor: [160, 180, 190],
+    vegGrowthRate: 0.002,
+    soilBase: 0.25,
+    tempMod: -0.2,
+  },
+  [BIOME_JUNGLE]: {
+    id: BIOME_JUNGLE,
+    name: 'Jungle',
+    baseColor: [20, 100, 35],
+    vegGrowthRate: 0.012,
+    soilBase: 0.8,
+    tempMod: 0.1,
   },
 };
 

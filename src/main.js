@@ -117,6 +117,7 @@ function restoreGameState(saveData) {
     _gameLoop: null,
     _zoneManager: zoneManager,
     _savedCamera: data.camera,
+    _savedWeather: data.weather,
   };
 }
 
@@ -152,7 +153,25 @@ function startGame(gameState) {
 
   // Weather system
   const weatherSystem = new WeatherSystem();
+  if (gameState._savedWeather) {
+    weatherSystem.fromJSON(gameState._savedWeather);
+    delete gameState._savedWeather;
+  }
+  gameState._weatherSystem = weatherSystem;
   setWeatherSystem(weatherSystem);
+
+  // Double-tap to zoom in/out
+  let _zoomedIn = false;
+  bus.on('doubleTap', ({ screenX, screenY }) => {
+    if (_zoomedIn) {
+      camera.zoomAt(0.4, screenX, screenY);
+      _zoomedIn = false;
+    } else {
+      camera.zoomAt(2.5, screenX, screenY);
+      _zoomedIn = true;
+    }
+    if (navigator.vibrate) navigator.vibrate(15);
+  });
 
   // UI
   const zoneManager = gameState._zoneManager;
@@ -170,13 +189,14 @@ function startGame(gameState) {
     renderer.overlayMode = mode;
   });
 
-  // Settings panel
-  const settingsPanel = new SettingsPanel(uiContainer);
-  settingsPanel.setGameState(gameState);
-
   // Achievements
   const achievements = new AchievementSystem(uiContainer);
   achievements.loadState(gameState.flags);
+
+  // Settings panel
+  const settingsPanel = new SettingsPanel(uiContainer);
+  settingsPanel.setGameState(gameState);
+  settingsPanel.setAchievements(achievements);
 
   // Photo mode
   const photoMode = new PhotoMode(uiContainer, canvas);
