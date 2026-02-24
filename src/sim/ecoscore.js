@@ -56,6 +56,15 @@ export function computeEcoScore(gameState) {
     score += popHealth * 15;
   }
 
+  // 7. Ocean coverage penalty — water is vital for the ecosystem
+  // Healthy ocean ratio is roughly 0.25-0.60 of total tiles.
+  // Below 0.15 triggers escalating penalties; below 0.05 is catastrophic.
+  const ocean = stats.oceanRatio ?? 0;
+  if (ocean < 0.15) {
+    const deficit = (0.15 - ocean) / 0.15; // 0..1 as ocean approaches 0
+    score -= deficit * 40; // up to -40 point penalty
+  }
+
   return Math.round(Math.max(0, Math.min(100, score)));
 }
 

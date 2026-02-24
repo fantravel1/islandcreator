@@ -2,12 +2,15 @@ import { bus } from '../engine/events.js';
 import { createRng } from '../engine/rng.js';
 import { createAnimal } from './animals.js';
 import { SPECIES_LIST, UNLOCK_SPECIES } from '../data/species.js';
+import { GRACE_PERIOD_TICKS } from '../data/constants.js';
 
 const _rng = createRng(Date.now() ^ 0xBEEF);
+
 const EVENT_CHECK_INTERVAL = 500;
 const EVENT_COOLDOWN = 1000;
 
-let _lastEventTick = -EVENT_COOLDOWN;
+// Start with a large value so no random events fire during the grace period
+let _lastEventTick = GRACE_PERIOD_TICKS;
 let _pendingChain = null;
 let _unlockedSpecies = new Set();
 let _ecoScore = 0;
@@ -303,7 +306,7 @@ export function checkRandomEvents(gameState, tick) {
     }
   }
 
-  if (tick % 200 === 0) {
+  if (tick % 200 === 0 && tick > GRACE_PERIOD_TICKS) {
     _checkSpeciesUnlocks(gameState);
   }
 

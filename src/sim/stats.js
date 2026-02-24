@@ -11,6 +11,7 @@ export function createStats() {
     landTiles: 0,
     protectedTiles: 0,
     developedTiles: 0,
+    oceanRatio: 0, // fraction of all tiles that are ocean
   };
 }
 
@@ -31,12 +32,17 @@ export function computeStats(island) {
 
   // Tile averages (sampled for performance — every 4th tile)
   let sumSoil = 0, sumVeg = 0, sumWater = 0;
-  let landCount = 0, protCount = 0, devCount = 0;
+  let landCount = 0, oceanCount = 0, protCount = 0, devCount = 0;
+  let totalSampled = 0;
   const step = 4;
 
   for (let y = 0; y < tiles.h; y += step) {
     for (let x = 0; x < tiles.w; x += step) {
-      if (tiles.isOcean(x, y)) continue;
+      totalSampled++;
+      if (tiles.isOcean(x, y)) {
+        oceanCount++;
+        continue;
+      }
       landCount++;
       sumSoil += tiles.getSoil(x, y);
       sumVeg += tiles.getVeg(x, y);
@@ -45,6 +51,8 @@ export function computeStats(island) {
       if (tiles.isDeveloped(x, y)) devCount++;
     }
   }
+
+  stats.oceanRatio = totalSampled > 0 ? oceanCount / totalSampled : 0;
 
   if (landCount > 0) {
     stats.avgSoil = sumSoil / landCount;

@@ -24,10 +24,12 @@ export class WeatherSystem {
     this.remaining = 300;
     this.intensity = 0;
     this._transitionTimer = 0;
+    this._warmupTicks = 2000; // suppress notifications during early game
   }
 
   update(season, tiles, chunkStart, chunkEnd) {
     this.remaining--;
+    if (this._warmupTicks > 0) this._warmupTicks--;
 
     if (this.remaining <= 0) {
       this._pickNext(season);
@@ -58,8 +60,8 @@ export class WeatherSystem {
     const [min, max] = WEATHER_DURATION[this.current];
     this.remaining = min + (_rng() * (max - min)) | 0;
 
-    // Emit weather change notification
-    if (this.current !== WEATHER_CLEAR) {
+    // Emit weather change notification (suppressed during warmup)
+    if (this.current !== WEATHER_CLEAR && this._warmupTicks <= 0) {
       const messages = {
         [WEATHER_RAIN]: { msg: 'Rain clouds gather over the island.', icon: '🌧️', type: 'info' },
         [WEATHER_STORM]: { msg: 'A storm approaches! Heavy winds and rain.', icon: '⛈️', type: 'warning' },
