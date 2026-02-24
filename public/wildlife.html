@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#1a3a4a">
+  <meta name="description" content="Discover IslandCreator's wildlife system: 6 species with individual AI, predator-prey dynamics, flocking behavior, reproduction, aging, and emergent storytelling. Notable animals earn names and titles.">
+  <meta name="keywords" content="island creator wildlife, animal simulation, predator prey game, ecosystem game animals, wildlife AI, animal behavior simulation, deer wolves hawks, nature simulation">
+  <link rel="canonical" href="https://islandcreator.vercel.app/wildlife">
+
+  <!-- Open Graph -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://islandcreator.vercel.app/wildlife">
+  <meta property="og:title" content="IslandCreator Wildlife — 6 Species with Emergent AI Behavior">
+  <meta property="og:description" content="Each animal has individual AI: they hunt, flee, reproduce, age, form packs, and earn names. Discover the wildlife simulation that makes every island unique.">
+  <meta property="og:image" content="https://islandcreator.vercel.app/og-image.svg">
+  <meta property="og:site_name" content="IslandCreator">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="IslandCreator Wildlife — 6 Species with Emergent AI Behavior">
+  <meta name="twitter:description" content="Each animal has individual AI: they hunt, flee, reproduce, age, and earn names through their exploits.">
+  <meta name="twitter:image" content="https://islandcreator.vercel.app/og-image.svg">
+
+  <title>IslandCreator Wildlife — 6 Species with Emergent AI Behavior</title>
+  <link rel="stylesheet" href="/landing.css">
+
+  <!-- JSON-LD -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "name": "IslandCreator Wildlife Guide",
+    "url": "https://islandcreator.vercel.app/wildlife",
+    "description": "A deep dive into IslandCreator's wildlife simulation: 6 species with individual AI, predator-prey dynamics, reproduction, aging, and emergent storytelling.",
+    "isPartOf": {
+      "@type": "WebSite",
+      "name": "IslandCreator",
+      "url": "https://islandcreator.vercel.app/"
+    }
+  }
+  </script>
+
+  <!-- FAQ Structured Data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What animals are in IslandCreator?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "IslandCreator has 6 wildlife species: Deer (herbivore), Rabbit (herbivore), Wolf (apex predator), Hawk (aerial predator), Fox (unlocked at C-grade ecosystem), and Sea Turtle (unlocked at B-grade ecosystem). Each species has unique behaviors, diets, and roles in the food chain."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does animal AI work in IslandCreator?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Each animal has individual AI that drives behavior. Herbivores seek food and water while fleeing from predators. Predators hunt prey, establish territories, and form packs. All animals reproduce when energy is high, age over time, and can die from starvation, thirst, predation, or old age. Flocking behavior uses separation, alignment, and cohesion physics."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What are notable animals in IslandCreator?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Animals that achieve remarkable feats earn names and titles. Predators with 10+ kills earn titles like 'the Apex'. Animals with 8+ children become 'the Matriarch' or 'the Patriarch'. Those surviving 800+ days become 'the Ancient'. Names include Sage, Willow, Shadow, Fang, and many more, making each island's wildlife unique and memorable."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How does the predator-prey system work?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Wolves hunt deer and rabbits. Hawks hunt rabbits from the air. Foxes (unlocked later) also hunt rabbits. Predators have realistic sight ranges and hunting behaviors. Prey animals flee when predators are detected. The system naturally balances populations — too many predators deplete prey, causing predator decline, which allows prey recovery."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "How many animals can an island support?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Each island supports up to 200 animals with automatic population balancing. The optimal ecosystem range is 20 to 150 animals. Having too few or too many animals affects your ecosystem score. Biodiversity is also tracked — having all species present and balanced gives the highest score."
+        }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <nav class="nav">
+    <a href="/about" class="nav-brand">🏝️ IslandCreator</a>
+    <div class="nav-links">
+      <a href="/about">About</a>
+      <a href="/features">Features</a>
+      <a href="/wildlife" aria-current="page">Wildlife</a>
+      <a href="/" class="play-btn">Play Now</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <span class="hero-emoji">🦌</span>
+    <h1>Every Animal Has<br><span>A Story to Tell</span></h1>
+    <p>6 species with individual AI, predator-prey dynamics, reproduction, aging, and emergent storytelling. Your island's wildlife writes its own history.</p>
+    <a href="/" class="play-btn">Meet Your Wildlife</a>
+  </header>
+
+  <section class="section">
+    <h2>6 Wildlife Species</h2>
+    <p class="subtitle">4 base species available from the start, plus 2 unlockable species earned through gameplay.</p>
+    <div class="cards">
+      <div class="card">
+        <span class="card-icon">🦌</span>
+        <h3>Deer</h3>
+        <p>Gentle herbivore. Grazes on vegetation, seeks water, and flees from wolves. Herds form naturally through flocking behavior. A cornerstone of any healthy ecosystem.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🐇</span>
+        <h3>Rabbit</h3>
+        <p>Fast-breeding herbivore. Primary food source for all predators. Quick to reproduce but vulnerable to wolves, hawks, and foxes. Vital prey species.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🐺</span>
+        <h3>Wolf</h3>
+        <p>Apex predator. Hunts deer and rabbits, forms packs, establishes territory. The key population regulator in your ecosystem. Too many will collapse prey populations.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🦅</span>
+        <h3>Hawk</h3>
+        <p>Aerial predator. Hunts rabbits with keen sight range. Patrols large territories from above. An elegant and efficient hunter.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🦊</span>
+        <h3>Fox <small>(Unlockable)</small></h3>
+        <p>Unlocked at C-grade ecosystem score (45+). A nimble predator that hunts rabbits. Adds another layer to the predator-prey web.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🐢</span>
+        <h3>Sea Turtle <small>(Unlockable)</small></h3>
+        <p>Unlocked at B-grade ecosystem score (60+). A coastal species that signals a thriving, well-balanced island environment.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Individual Animal AI</h2>
+    <p class="subtitle">Every animal is a unique individual with its own behavior, energy, and life story.</p>
+    <ul class="feature-list">
+      <li data-icon="🧠">Individual decision-making — each animal evaluates its own needs</li>
+      <li data-icon="🍃">Herbivores seek food, water, and safety from predators</li>
+      <li data-icon="🐾">Predators stalk, chase, and hunt with realistic sight ranges</li>
+      <li data-icon="👥">Flocking behavior with separation, alignment, and cohesion</li>
+      <li data-icon="💕">Reproduction when energy thresholds are met</li>
+      <li data-icon="⏳">Aging system with natural lifespan and death</li>
+      <li data-icon="💀">Multiple causes of death: starvation, thirst, predation, old age</li>
+      <li data-icon="🗺️">Territorial behavior with spatial awareness</li>
+    </ul>
+  </section>
+
+  <section class="section">
+    <h2>Predator-Prey Dynamics</h2>
+    <p class="subtitle">A self-balancing food web that creates dramatic, emergent stories.</p>
+    <div class="cards">
+      <div class="card">
+        <span class="card-icon">🔗</span>
+        <h3>Food Chain</h3>
+        <p>Wolves eat deer and rabbits. Hawks eat rabbits. Foxes eat rabbits. Deer and rabbits eat vegetation. Everything connects.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">📊</span>
+        <h3>Population Cycles</h3>
+        <p>Too many predators depletes prey, causing predator decline, which allows prey recovery. Classic Lotka-Volterra dynamics emerge naturally.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🎯</span>
+        <h3>Optimal Balance</h3>
+        <p>The sweet spot is 20-150 animals with all species represented. Your ecosystem score rewards biodiversity and population balance.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>Notable Animals</h2>
+    <p class="subtitle">Animals that achieve remarkable feats earn names and titles — becoming legends of your island.</p>
+    <div class="cards">
+      <div class="card">
+        <span class="card-icon">⚔️</span>
+        <h3>"The Apex"</h3>
+        <p>Earned by predators with 10 or more kills. These are the dominant hunters that shape your ecosystem through their prowess.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">👑</span>
+        <h3>"The Matriarch"</h3>
+        <p>Earned by animals with 8 or more offspring. These prolific parents leave a lasting genetic legacy across your island.</p>
+      </div>
+      <div class="card">
+        <span class="card-icon">🏛️</span>
+        <h3>"The Ancient"</h3>
+        <p>Earned by animals surviving 800+ days. These venerable creatures have weathered droughts, storms, and predators to become legends.</p>
+      </div>
+    </div>
+    <p style="margin-top:1.5rem;color:var(--text-muted)">Named animals include: Sage, Willow, Clover, Fern (herbivores) and Shadow, Fang, Storm, Blaze (predators). Each notable animal's story is tracked in your island's narrative journal.</p>
+  </section>
+
+  <section class="section">
+    <h2>Frequently Asked Questions</h2>
+    <div class="faq">
+      <details>
+        <summary>What animals are in the game?</summary>
+        <p>6 species: Deer, Rabbit, Wolf, and Hawk are available from the start. Fox unlocks when your ecosystem reaches C-grade (45+ score), and Sea Turtle unlocks at B-grade (60+ score).</p>
+      </details>
+      <details>
+        <summary>How does animal AI work?</summary>
+        <p>Each animal has individual AI. Herbivores seek food and water while fleeing predators. Predators hunt, form packs, and establish territories. All animals reproduce, age, and can die from starvation, thirst, predation, or old age.</p>
+      </details>
+      <details>
+        <summary>What are notable animals?</summary>
+        <p>Animals achieving remarkable feats earn names (Sage, Shadow, Storm, etc.) and titles ("the Apex" for 10+ kills, "the Matriarch" for 8+ children, "the Ancient" for 800+ days old). Their stories are tracked in the narrative journal.</p>
+      </details>
+      <details>
+        <summary>How many animals can my island have?</summary>
+        <p>Up to 200 animals with automatic population balancing. The optimal range for the best ecosystem score is 20 to 150 animals with good species diversity.</p>
+      </details>
+      <details>
+        <summary>How does predator-prey balance work?</summary>
+        <p>It follows natural population dynamics. Too many predators deplete prey, leading to predator decline, which then allows prey recovery. You can influence this with governance policies like hunting limits and conservation zones.</p>
+      </details>
+    </div>
+  </section>
+
+  <section class="cta">
+    <h2>Create Your Ecosystem</h2>
+    <p>Introduce wildlife, watch dynamics emerge, and see which animals become legends of your island.</p>
+    <a href="/" class="play-btn">Play IslandCreator Now</a>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-links">
+      <a href="/about">About</a>
+      <a href="/features">Features</a>
+      <a href="/wildlife">Wildlife</a>
+      <a href="/">Play</a>
+    </div>
+    <p>IslandCreator — Build islands, shape ecosystems, govern with care.</p>
+  </footer>
+</body>
+</html>

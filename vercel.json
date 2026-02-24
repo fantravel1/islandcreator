@@ -3,8 +3,15 @@
   "outputDirectory": ".",
   "rewrites": [
     { "source": "/", "destination": "/public/index.html" },
+    { "source": "/about", "destination": "/public/about.html" },
+    { "source": "/features", "destination": "/public/features.html" },
+    { "source": "/wildlife", "destination": "/public/wildlife.html" },
     { "source": "/styles.css", "destination": "/public/styles.css" },
-    { "source": "/manifest.webmanifest", "destination": "/public/manifest.webmanifest" }
+    { "source": "/landing.css", "destination": "/public/landing.css" },
+    { "source": "/manifest.webmanifest", "destination": "/public/manifest.webmanifest" },
+    { "source": "/robots.txt", "destination": "/public/robots.txt" },
+    { "source": "/sitemap.xml", "destination": "/public/sitemap.xml" },
+    { "source": "/og-image.svg", "destination": "/public/og-image.svg" }
   ],
   "headers": [
     {
@@ -18,6 +25,25 @@
       "source": "/(.*).css",
       "headers": [
         { "key": "Content-Type", "value": "text/css" }
+      ]
+    },
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        { "key": "Content-Type", "value": "application/xml" }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain" }
+      ]
+    },
+    {
+      "source": "/og-image.svg",
+      "headers": [
+        { "key": "Content-Type", "value": "image/svg+xml" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
       ]
     }
   ]
