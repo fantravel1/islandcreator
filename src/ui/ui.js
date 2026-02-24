@@ -1,0 +1,212 @@
+import { bus } from '../engine/events.js';
+import { Toolbar } from './toolbar.js';
+import { HUD } from './hud.js';
+import { Inspector } from './inspector.js';
+import {
+  TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
+  BRUSH_RADIUS, SCULPT_STRENGTH,
+} from '../data/constants.js';
+import { createAnimal } from '../sim/animals.js';
+
+export class UI {
+  constructor(uiContainer, gameState, overlays, zoneManager) {
+    this.gameState = gameState;
+    this.overlays = overlays;
+    this.zoneManager = zoneManager;
+
+    this.toolbar = new Toolbar(uiContainer);
+    this.hud = new HUD(uiContainer);
+    this.inspector = new Inspector(uiContainer);
+
+    this._sculptMode = 'raise';
+    this._isDragging = false;
+    this._zoneStartTile = null;
+
+    this._setupEvents();
+  }
+
+  _setupEvents() {
+    // Tool changes
+    bus.on('toolChanged', ({ tool }) => {
+      this.overlays.activeTool = tool;
+
+      if (tool === TOOL_GOVERNANCE) {
+        this.inspector.showGovernance(this.gameState.governance);
+      } else {
+        if (this.inspector.mode === 'governance') {
+          this.inspector.hide();
+        }
+      }
+    });
+
+    bus.on('sculptModeChanged', ({ mode }) => {
+      this._sculptMode = mode;
+    });
+
+    bus.on('biomeSelected', ({ biome }) => {
+      this.overlays.selectedBiome = biome;
+    });
+
+    bus.on('speciesSelected', ({ species }) => {
+      this.overlays.selectedSpecies = species;
+    });
+
+    // Speed
+    bus.on('speedChanged', ({ speed }) => {
+      this.gameState._gameLoop?.setSpeed(speed);
+    });
+
+    // Stats update
+    bus.on('statsUpdated', (stats) => {
+      this.hud.updateStats(stats);
+    });
+
+    // Input events
+    bus.on('tap', (e) => this._onTap(e));
+    bus.on('drag', (e) => this._onDrag(e));
+    bus.on('dragEnd', () => this._onDragEnd());
+    bus.on('pinch', (e) => this._onPinch(e));
+    bus.on('pan', (e) => this._onPan(e));
+  }
+
+  _onTap(e) {
+    const tool = this.toolbar.activeTool;
+    const tiles = this.gameState.islands[0]?.world.tiles;
+    if (!tiles) return;
+
+    const tx = Math.floor(e.worldX);
+    const ty = Math.floor(e.worldY);
+
+    if (!tiles.inBounds(tx, ty)) return;
+
+    if (tool === TOOL_INSPECT) {
+      // Check for animal near tap
+      const animals = this.gameState.islands[0].entities.animals;
+      let closest = null;
+      let closestDist = 4;
+      for (const a of animals) {
+        const dx = a.x - e.worldX;
+        const dy = a.y - e.worldY;
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d < closestDist) {
+          closestDist = d;
+          closest = a;
+        }
+      }
+      if (closest) {
+        this.inspector.showAnimal(closest);
+      } else {
+        this.inspector.showTile(tiles, tx, ty);
+      }
+    } else if (tool === TOOL_ANIMAL) {
+      if (tiles.isLand(tx, ty)) {
+        const animal = createAnimal(this.toolbar.selectedSpecies, tx + 0.5, ty + 0.5);
+        if (animal) {
+          this.gameState.islands[0].entities.animals.push(animal);
+          this.gameState._dirty = true;
+          // Haptic feedback
+          if (navigator.vibrate) navigator.vibrate(20);
+        }
+      }
+    } else if (tool === TOOL_ZONE) {
+      this.zoneManager.toggleTile(tx, ty);
+      this.gameState._dirty = true;
+      if (navigator.vibrate) navigator.vibrate(15);
+    } else if (tool === TOOL_SCULPT) {
+      this._applySculpt(tiles, tx, ty);
+    } else if (tool === TOOL_BIOME) {
+      this._applyBiome(tiles, tx, ty);
+    }
+  }
+
+  _onDrag(e) {
+    const tool = this.toolbar.activeTool;
+    const tiles = this.gameState.islands[0]?.world.tiles;
+    if (!tiles) return;
+
+    const tx = Math.floor(e.worldX);
+    const ty = Math.floor(e.worldY);
+
+    this.overlays.setCursor(e.worldX, e.worldY);
+
+    if (tool === TOOL_SCULPT) {
+      this._applySculpt(tiles, tx, ty);
+    } else if (tool === TOOL_BIOME) {
+      this._applyBiome(tiles, tx, ty);
+    } else if (tool === TOOL_INSPECT) {
+      // Single-finger pan when no tool active
+      const cam = this.gameState._camera;
+      if (cam) cam.pan(e.dx, e.dy);
+    } else if (tool === TOOL_ZONE) {
+      if (!this._zoneStartTile) {
+        this._zoneStartTile = { x: tx, y: ty };
+      }
+      this.overlays.zoneStart = this._zoneStartTile;
+      this.overlays.zoneEnd = { x: tx, y: ty };
+    }
+  }
+
+  _onDragEnd() {
+    this.overlays.setCursor(null, null);
+
+    if (this.toolbar.activeTool === TOOL_ZONE && this._zoneStartTile && this.overlays.zoneEnd) {
+      this.zoneManager.addZone(
+        this._zoneStartTile.x, this._zoneStartTile.y,
+        this.overlays.zoneEnd.x, this.overlays.zoneEnd.y
+      );
+      this.gameState._dirty = true;
+      if (navigator.vibrate) navigator.vibrate([15, 50, 15]);
+    }
+
+    this._zoneStartTile = null;
+    this.overlays.zoneStart = null;
+    this.overlays.zoneEnd = null;
+  }
+
+  _onPinch(e) {
+    const cam = this.gameState._camera;
+    if (cam) cam.zoomAt(e.scale, e.centerX, e.centerY);
+  }
+
+  _onPan(e) {
+    const cam = this.gameState._camera;
+    if (cam) cam.pan(e.dx, e.dy);
+  }
+
+  _applySculpt(tiles, cx, cy) {
+    const dir = this._sculptMode === 'raise' ? 1 : -1;
+    for (let dy = -BRUSH_RADIUS; dy <= BRUSH_RADIUS; dy++) {
+      for (let dx = -BRUSH_RADIUS; dx <= BRUSH_RADIUS; dx++) {
+        if (dx * dx + dy * dy > BRUSH_RADIUS * BRUSH_RADIUS) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!tiles.inBounds(x, y)) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const falloff = 1 - dist / (BRUSH_RADIUS + 1);
+        const h = tiles.getH(x, y);
+        tiles.setH(x, y, Math.max(0, Math.min(1, h + SCULPT_STRENGTH * dir * falloff)));
+      }
+    }
+    this.gameState._dirty = true;
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  _applyBiome(tiles, cx, cy) {
+    const biome = this.toolbar.selectedBiome;
+    for (let dy = -BRUSH_RADIUS; dy <= BRUSH_RADIUS; dy++) {
+      for (let dx = -BRUSH_RADIUS; dx <= BRUSH_RADIUS; dx++) {
+        if (dx * dx + dy * dy > BRUSH_RADIUS * BRUSH_RADIUS) continue;
+        const x = cx + dx;
+        const y = cy + dy;
+        if (!tiles.inBounds(x, y) || tiles.isOcean(x, y)) continue;
+        tiles.setBiome(x, y, biome);
+      }
+    }
+    this.gameState._dirty = true;
+    if (navigator.vibrate) navigator.vibrate(10);
+  }
+
+  update() {
+    this.hud.updateTime(this.gameState.time);
+  }
+}
