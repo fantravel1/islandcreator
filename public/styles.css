@@ -397,6 +397,60 @@ html, body {
 .bar-energy { background: var(--bar-energy); }
 .bar-hunger { background: var(--bar-hunger); }
 .bar-thirst { background: var(--bar-thirst); }
+.bar-danger { background: #e05050; }
+.bar-age { background: #a08060; }
+
+/* ===== INSPECTOR THREATS & TIPS ===== */
+.inspector-threats {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(224,80,80,0.1);
+  border-left: 3px solid #e05050;
+  border-radius: 4px;
+}
+.inspector-status-ok {
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: rgba(58,175,80,0.1);
+  border-left: 3px solid #3aaf50;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #8adf8a;
+}
+.threat-line {
+  font-size: 12px;
+  color: #e8a8a8;
+  padding: 2px 0;
+}
+.inspector-section-label {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.inspector-factors {
+  padding: 4px 0;
+}
+.factor-line {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 2px 0;
+}
+.inspector-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-style: italic;
+}
+.pop-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.state-label {
+  font-style: italic;
+  color: var(--text);
+}
 
 /* ===== SLIDERS (Governance) ===== */
 .inspector-slider-row {

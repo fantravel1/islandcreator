@@ -127,6 +127,7 @@ export class UI {
     if (!tiles.inBounds(tx, ty)) return;
 
     if (tool === TOOL_INSPECT) {
+      // Priority: animal > structure > tile
       const animals = this.gameState.islands[0].entities.animals;
       let closest = null;
       let closestDist = 4;
@@ -142,7 +143,17 @@ export class UI {
       if (closest) {
         this.inspector.showAnimal(closest);
       } else {
-        this.inspector.showTile(tiles, tx, ty);
+        // Check if tapping on a structure
+        const structures = this.gameState.islands[0].entities.structures || [];
+        const tappedStruct = structures.find(s => {
+          const half = Math.floor((s.size || 1) / 2);
+          return tx >= s.x - half && tx <= s.x + half && ty >= s.y - half && ty <= s.y + half;
+        });
+        if (tappedStruct) {
+          this.inspector.showStructure(tappedStruct);
+        } else {
+          this.inspector.showTile(tiles, tx, ty);
+        }
       }
     } else if (tool === TOOL_ANIMAL) {
       if (tiles.isLand(tx, ty)) {

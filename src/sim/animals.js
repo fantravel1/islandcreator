@@ -163,6 +163,8 @@ export function simulateAnimals(animals, tiles, governance, tick) {
     // Death conditions
     if (a.energy <= 0 || a.ageDays > spec.maxAge) {
       toRemove.push(i);
+      // Emit death cause so players understand what happened
+      _reportDeath(a, spec, tick);
       continue;
     }
 
@@ -413,6 +415,8 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
             a.hunger = Math.max(0, a.hunger - 0.5);
             a.energy = Math.min(1, a.energy + spec.energyFromFood);
             bus.emit('animalKill', { predatorId: a.id, preyId: closestPrey.id });
+            const preySpec = SPECIES[closestPrey.speciesId];
+            if (preySpec) _reportPredation(closestPrey, preySpec, a, spec);
           }
         }
       } else {
@@ -487,4 +491,48 @@ function _stayOnLand(a, tiles) {
     a.x += (dx / dist) * 0.5;
     a.y += (dy / dist) * 0.5;
   }
+}
+
+// --- Death cause notifications (throttled so they don't spam) ---
+let _lastDeathNotifTick = 0;
+let _lastPredationNotifTick = 0;
+
+function _reportDeath(animal, spec, tick) {
+  // Only report occasionally — ~1 in 6 deaths, and at most once per 500 ticks
+  if (tick - _lastDeathNotifTick < 500) return;
+  if (_rng() > 0.16) return;
+  _lastDeathNotifTick = tick;
+
+  const name = animal.name || spec.name;
+  let msg, icon;
+  if (animal.ageDays > spec.maxAge) {
+    msg = `${name} died of old age after ${(animal.ageDays / 120).toFixed(1)} years.`;
+    icon = '🕊️';
+  } else if (animal.thirst > 0.8 && animal.hunger <= 0.6) {
+    msg = `${name} died of dehydration. The land needs more water.`;
+    icon = '💧';
+  } else if (animal.hunger > 0.8) {
+    msg = `${name} starved. ${spec.type === 'predator' ? 'Not enough prey to hunt.' : 'Not enough vegetation to eat.'}`;
+    icon = '🍂';
+  } else {
+    msg = `${name} perished from exhaustion.`;
+    icon = '💀';
+  }
+  bus.emit('notification', { message: msg, type: 'info', icon });
+}
+
+function _reportPredation(prey, preySpec, predator, predSpec) {
+  // Only report occasionally — ~1 in 8 kills
+  const tick = _lastPredationNotifTick; // approximate
+  if (performance.now() - _lastPredationNotifTick < 8000) return;
+  if (_rng() > 0.12) return;
+  _lastPredationNotifTick = performance.now();
+
+  const predName = predator.name || predSpec.name;
+  const preyName = prey.name || preySpec.name;
+  bus.emit('notification', {
+    message: `${predName} caught a ${preyName}.`,
+    type: 'info',
+    icon: predSpec.emoji,
+  });
 }
