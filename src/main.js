@@ -1,15 +1,23 @@
 import { GameLoop } from './engine/gameLoop.js';
 import { InputManager } from './engine/input.js';
 import { Scheduler } from './engine/scheduler.js';
+import { bus } from './engine/events.js';
 import { Camera } from './render/camera.js';
 import { Renderer } from './render/renderer.js';
 import { OverlayRenderer } from './render/overlays.js';
+import { ParticleSystem } from './render/particles.js';
 import { generateIsland } from './world/terrainGen.js';
 import { ZoneManager } from './world/zones.js';
 import { simTick } from './sim/simTick.js';
 import { computeStats } from './sim/stats.js';
 import { createGovernanceState } from './sim/governance.js';
 import { UI } from './ui/ui.js';
+import { TitleScreen } from './ui/titlescreen.js';
+import { MiniMap } from './ui/minimap.js';
+import { PopulationGraph } from './ui/popgraph.js';
+import { NotificationSystem } from './ui/notifications.js';
+import { Tutorial } from './ui/tutorial.js';
+import { AmbientAudio } from './audio/ambient.js';
 import { saveGame } from './storage/save.js';
 import { loadGame, hasSave } from './storage/load.js';
 import { migrate } from './storage/migrations.js';
@@ -23,17 +31,8 @@ function createNewGameState(seed) {
   const zoneManager = new ZoneManager(tiles);
 
   const gameState = {
-    meta: {
-      version: 1,
-      seed,
-      createdAt: Date.now(),
-      lastSavedAt: null,
-    },
-    settings: {
-      sound: true,
-      haptics: true,
-      simSpeed: 1,
-    },
+    meta: { version: 1, seed, createdAt: Date.now(), lastSavedAt: null },
+    settings: { sound: false, haptics: true, simSpeed: 1 },
     time: { day: 0, season: 0, year: 0, tick: 0 },
     governance: createGovernanceState(),
     islands: [{
@@ -41,19 +40,11 @@ function createNewGameState(seed) {
       name: 'My Island',
       size: { w: GRID_W, h: GRID_H },
       world: { tiles },
-      entities: {
-        animals: [],
-        structures: [],
-      },
+      entities: { animals: [], structures: [] },
       stats: {
-        population: {},
-        totalAnimals: 0,
-        avgSoil: 0,
-        avgVeg: 0,
-        avgWater: 0,
-        landTiles: 0,
-        protectedTiles: 0,
-        developedTiles: 0,
+        population: {}, totalAnimals: 0,
+        avgSoil: 0, avgVeg: 0, avgWater: 0,
+        landTiles: 0, protectedTiles: 0, developedTiles: 0,
       },
     }],
     flags: { tutorialDone: false },
@@ -63,9 +54,7 @@ function createNewGameState(seed) {
     _zoneManager: zoneManager,
   };
 
-  // Spawn initial animals on land tiles
   spawnInitialAnimals(gameState, seed);
-
   return gameState;
 }
 
@@ -74,7 +63,6 @@ function spawnInitialAnimals(gameState, seed) {
   const tiles = gameState.islands[0].world.tiles;
   const animals = gameState.islands[0].entities.animals;
 
-  // Find land tiles
   const landTiles = [];
   for (let y = 0; y < GRID_H; y++) {
     for (let x = 0; x < GRID_W; x++) {
@@ -83,12 +71,9 @@ function spawnInitialAnimals(gameState, seed) {
       }
     }
   }
-
   if (landTiles.length === 0) return;
 
-  // Spawn counts per species
   const spawnCounts = { deer: 8, rabbit: 12, wolf: 3, hawk: 2 };
-
   for (const spec of SPECIES_LIST) {
     const count = spawnCounts[spec.id] || 4;
     for (let i = 0; i < count; i++) {
@@ -102,16 +87,13 @@ function spawnInitialAnimals(gameState, seed) {
 
 function restoreGameState(saveData) {
   const data = migrate(saveData);
-
   const tiles = data.islands[0].world.tiles;
   const zoneManager = new ZoneManager(tiles);
-  if (data.zones) {
-    zoneManager.loadJSON(data.zones);
-  }
+  if (data.zones) zoneManager.loadJSON(data.zones);
 
-  const gameState = {
+  return {
     meta: data.meta,
-    settings: data.settings || { sound: true, haptics: true, simSpeed: 1 },
+    settings: data.settings || { sound: false, haptics: true, simSpeed: 1 },
     time: data.time,
     governance: data.governance,
     islands: data.islands,
@@ -122,110 +104,168 @@ function restoreGameState(saveData) {
     _zoneManager: zoneManager,
     _savedCamera: data.camera,
   };
-
-  return gameState;
 }
 
-function boot() {
+function startGame(gameState) {
   const canvas = document.getElementById('game-canvas');
   const uiContainer = document.getElementById('ui-container');
 
-  if (!canvas || !uiContainer) {
-    console.error('Missing DOM elements');
-    return;
-  }
-
-  // Check for saved game
-  let gameState;
-  if (hasSave()) {
-    const saveData = loadGame();
-    if (saveData) {
-      gameState = restoreGameState(saveData);
-    }
-  }
-
-  if (!gameState) {
-    const seed = (Math.random() * 999999) | 0;
-    gameState = createNewGameState(seed);
-  }
-
-  // Setup camera
+  // Camera
   const camera = new Camera(canvas);
   camera.resize();
   camera.centerOn(GRID_W / 2, GRID_H / 2);
-
-  // Restore camera position if from save
   if (gameState._savedCamera) {
     camera.x = gameState._savedCamera.x || GRID_W / 2;
     camera.y = gameState._savedCamera.y || GRID_H / 2;
     camera.zoom = gameState._savedCamera.zoom || 1;
     delete gameState._savedCamera;
   }
-
   gameState._camera = camera;
 
-  // Setup renderer
+  // Renderer
   const renderer = new Renderer(canvas, camera);
   const overlays = new OverlayRenderer(camera);
+  const particles = new ParticleSystem();
 
-  // Setup input
+  // Input
   const input = new InputManager(canvas, camera);
 
-  // Setup zone manager reference
+  // UI
   const zoneManager = gameState._zoneManager;
-
-  // Setup UI
   const ui = new UI(uiContainer, gameState, overlays, zoneManager);
 
-  // Setup scheduler
+  // Mini-map
+  const minimap = new MiniMap(uiContainer, camera);
+  minimap.setTiles(gameState.islands[0].world.tiles);
+
+  // Population graph
+  const popGraph = new PopulationGraph(uiContainer);
+
+  // Notifications
+  const notifications = new NotificationSystem(uiContainer);
+
+  // Audio
+  const audio = new AmbientAudio();
+
+  // Sound toggle button in HUD stats
+  const soundBtn = document.createElement('button');
+  soundBtn.className = 'stat-item sound-toggle';
+  soundBtn.textContent = '🔇';
+  soundBtn.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    const on = audio.toggle();
+    soundBtn.textContent = on ? '🔊' : '🔇';
+    gameState.settings.sound = on;
+  });
+
+  // Add graph toggle + sound button to HUD
+  setTimeout(() => {
+    const statsEl = uiContainer.querySelector('.hud-stats');
+    if (statsEl) {
+      statsEl.appendChild(popGraph.toggleBtn);
+      statsEl.appendChild(soundBtn);
+    }
+  }, 100);
+
+  // Tutorial
+  const tutorial = new Tutorial(uiContainer);
+  if (!gameState.flags.tutorialDone) {
+    setTimeout(() => tutorial.start(), 800);
+  }
+  bus.on('tutorialDone', () => {
+    gameState.flags.tutorialDone = true;
+    gameState._dirty = true;
+  });
+
+  // Scheduler
   const scheduler = new Scheduler();
   scheduler.add('autosave', AUTOSAVE_INTERVAL, () => {
-    if (gameState._dirty) {
-      saveGame(gameState);
-    }
+    if (gameState._dirty) saveGame(gameState);
   });
-  scheduler.add('uiUpdate', 500, () => {
-    ui.update();
-  });
+  scheduler.add('uiUpdate', 500, () => ui.update());
+  scheduler.add('minimap', 2000, (now) => minimap.update(now));
+  scheduler.add('audio', 5000, () => audio.setSeason(gameState.time.season));
 
-  // Compute initial stats
+  // Initial stats
   computeStats(gameState.islands[0]);
 
-  // Setup game loop
+  // Game loop
   const gameLoop = new GameLoop(
     () => simTick(gameState),
     (dt) => {
-      scheduler.update(performance.now());
-      renderer.render(gameState);
+      const now = performance.now();
+      scheduler.update(now);
+      particles.update(gameState.time.season, canvas.width, canvas.height);
+      renderer.render(gameState, now);
+      particles.render(renderer.ctx);
       overlays.render(renderer.ctx);
     }
   );
   gameState._gameLoop = gameLoop;
 
-  // Handle resize
-  window.addEventListener('resize', () => {
-    camera.resize();
-  });
+  // Resize
+  window.addEventListener('resize', () => camera.resize());
 
-  // Save on blur/visibility change
+  // Save on blur
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && gameState._dirty) {
-      saveGame(gameState);
-    }
+    if (document.hidden && gameState._dirty) saveGame(gameState);
   });
 
   // Start
   gameLoop.start();
 
-  // Hide loading screen
+  // Initial notification
+  setTimeout(() => {
+    bus.emit('notification', {
+      message: 'Island generated! Explore and shape your ecosystem.',
+      type: 'info',
+      icon: '🏝️',
+    });
+  }, 1500);
+}
+
+function boot() {
+  const canvas = document.getElementById('game-canvas');
+  const uiContainer = document.getElementById('ui-container');
+  if (!canvas || !uiContainer) return;
+
+  // Resize canvas to fill screen
+  const cam = { resize() {
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = canvas.clientWidth * dpr;
+    canvas.height = canvas.clientHeight * dpr;
+  }};
+  cam.resize();
+  window.addEventListener('resize', cam.resize);
+
+  // Show title screen
   const loading = document.getElementById('loading');
   if (loading) {
     loading.style.opacity = '0';
     setTimeout(() => loading.remove(), 500);
   }
+
+  const titleScreen = new TitleScreen(uiContainer);
+
+  bus.on('titleAction', ({ action }) => {
+    let gameState;
+
+    if (action === 'continue') {
+      const saveData = loadGame();
+      if (saveData) {
+        gameState = restoreGameState(saveData);
+      }
+    }
+
+    if (!gameState) {
+      const seed = (Math.random() * 999999) | 0;
+      gameState = createNewGameState(seed);
+    }
+
+    startGame(gameState);
+  });
 }
 
-// Wait for DOM
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', boot);
 } else {

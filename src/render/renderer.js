@@ -2,10 +2,10 @@ import { BIOME_DATA } from '../world/biomes.js';
 import { BIOME_OCEAN } from '../data/constants.js';
 import { SPECIES } from '../data/species.js';
 
-// Reusable color buffer to avoid allocations
 const _rgb = [0, 0, 0];
+let _frameTime = 0;
 
-function tileColor(tiles, x, y) {
+function tileColor(tiles, x, y, time) {
   const biome = tiles.getBiome(x, y);
   const h = tiles.getH(x, y);
   const veg = tiles.getVeg(x, y);
@@ -13,7 +13,6 @@ function tileColor(tiles, x, y) {
   const bdata = BIOME_DATA[biome];
 
   if (biome === BIOME_OCEAN) {
-    // Deeper ocean = darker blue
     const depth = Math.max(0, 0.3 - h) / 0.3;
     const dc = bdata.deepColor;
     const bc = bdata.baseColor;
@@ -21,44 +20,88 @@ function tileColor(tiles, x, y) {
     _rgb[1] = dc[1] + (bc[1] - dc[1]) * (1 - depth);
     _rgb[2] = dc[2] + (bc[2] - dc[2]) * (1 - depth);
 
-    // Add slight wave shimmer
-    const shimmer = Math.sin(x * 0.3 + y * 0.7) * 8;
-    _rgb[0] += shimmer;
-    _rgb[1] += shimmer;
-    _rgb[2] += shimmer;
+    // Animated wave shimmer
+    const wave = Math.sin(x * 0.4 + y * 0.6 + _frameTime * 0.002) * 6
+               + Math.sin(x * 0.15 - y * 0.3 + _frameTime * 0.0015) * 4;
+    _rgb[0] += wave;
+    _rgb[1] += wave * 1.2;
+    _rgb[2] += wave * 1.5;
+
+    // Coastal foam
+    if (depth < 0.15) {
+      const foam = Math.sin(x * 0.8 + _frameTime * 0.003) * 0.5 + 0.5;
+      const foamAmt = (1 - depth / 0.15) * foam * 40;
+      _rgb[0] += foamAmt;
+      _rgb[1] += foamAmt;
+      _rgb[2] += foamAmt;
+    }
   } else {
     const bc = bdata.baseColor;
-    // Elevation shading (higher = lighter)
     const elevFactor = 0.7 + (h - 0.3) * 0.5;
 
     _rgb[0] = bc[0] * elevFactor;
     _rgb[1] = bc[1] * elevFactor;
     _rgb[2] = bc[2] * elevFactor;
 
-    // Vegetation overlay (greener)
+    // Vegetation with wind sway
     if (veg > 0) {
-      _rgb[0] -= veg * 20;
-      _rgb[1] += veg * 30;
+      const sway = Math.sin(x * 0.5 + y * 0.3 + _frameTime * 0.001) * 3 * veg;
+      _rgb[0] -= veg * 20 + sway;
+      _rgb[1] += veg * 30 + sway * 2;
       _rgb[2] -= veg * 15;
     }
 
-    // Water presence (slight blue tint)
+    // Water presence
     if (water > 0.1) {
+      const waterShimmer = Math.sin(x + _frameTime * 0.002) * 3 * water;
       _rgb[0] -= water * 15;
-      _rgb[1] += water * 5;
-      _rgb[2] += water * 30;
+      _rgb[1] += water * 5 + waterShimmer;
+      _rgb[2] += water * 30 + waterShimmer * 2;
     }
 
-    // Beach/shore coloring for low land tiles
+    // Beach/shore
     if (h < 0.35) {
       const beachFactor = (0.35 - h) / 0.05;
       _rgb[0] = _rgb[0] + (210 - _rgb[0]) * beachFactor * 0.5;
       _rgb[1] = _rgb[1] + (190 - _rgb[1]) * beachFactor * 0.5;
       _rgb[2] = _rgb[2] + (140 - _rgb[2]) * beachFactor * 0.5;
     }
+
+    // Snow caps on peaks
+    if (h > 0.8) {
+      const snowFactor = (h - 0.8) / 0.2;
+      _rgb[0] = _rgb[0] + (240 - _rgb[0]) * snowFactor;
+      _rgb[1] = _rgb[1] + (245 - _rgb[1]) * snowFactor;
+      _rgb[2] = _rgb[2] + (250 - _rgb[2]) * snowFactor;
+    }
   }
 
-  // Clamp
+  // Day/night tinting
+  if (time) {
+    const dayProgress = time.tick / 100;
+    let brightness = 1.0;
+    if (dayProgress < 0.1) {
+      brightness = 0.55 + dayProgress * 4.5;
+    } else if (dayProgress < 0.2) {
+      brightness = 1.0;
+      _rgb[0] += 12 * (1 - (dayProgress - 0.1) * 10);
+      _rgb[1] += 4 * (1 - (dayProgress - 0.1) * 10);
+    } else if (dayProgress < 0.75) {
+      brightness = 1.0;
+    } else if (dayProgress < 0.9) {
+      const duskAmt = (dayProgress - 0.75) / 0.15;
+      brightness = 1.0 - duskAmt * 0.25;
+      _rgb[0] += 18 * duskAmt;
+      _rgb[2] -= 12 * duskAmt;
+    } else {
+      brightness = 0.75 - (dayProgress - 0.9) * 2;
+    }
+    brightness = Math.max(0.5, brightness);
+    _rgb[0] *= brightness;
+    _rgb[1] *= brightness;
+    _rgb[2] *= brightness;
+  }
+
   _rgb[0] = Math.max(0, Math.min(255, _rgb[0] | 0));
   _rgb[1] = Math.max(0, Math.min(255, _rgb[1] | 0));
   _rgb[2] = Math.max(0, Math.min(255, _rgb[2] | 0));
@@ -72,27 +115,22 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.camera = camera;
     this.dirty = true;
-
-    // Pre-allocated ImageData for tile rendering (will be created on first frame)
-    this._imgData = null;
-    this._imgW = 0;
-    this._imgH = 0;
   }
 
   markDirty() {
     this.dirty = true;
   }
 
-  render(gameState) {
+  render(gameState, timestamp) {
+    _frameTime = timestamp || performance.now();
+
     const ctx = this.ctx;
     const cam = this.camera;
     const ts = cam.tileSize;
-    const dpr = window.devicePixelRatio || 1;
     const cw = this.canvas.width;
     const ch = this.canvas.height;
 
-    // Clear
-    ctx.fillStyle = '#0d2137';
+    ctx.fillStyle = '#0a1929';
     ctx.fillRect(0, 0, cw, ch);
 
     const range = cam.getVisibleRange();
@@ -102,11 +140,12 @@ export class Renderer {
     const tiles = island.world.tiles;
     const offsetX = cw / 2 - cam.x * ts;
     const offsetY = ch / 2 - cam.y * ts;
+    const time = gameState.time;
 
     // Draw tiles
     for (let y = range.y1; y <= range.y2; y++) {
       for (let x = range.x1; x <= range.x2; x++) {
-        const rgb = tileColor(tiles, x, y);
+        const rgb = tileColor(tiles, x, y, time);
         const sx = (x * ts + offsetX) | 0;
         const sy = (y * ts + offsetY) | 0;
         const sw = (ts + 1) | 0;
@@ -117,12 +156,10 @@ export class Renderer {
 
         // Protected zone overlay
         if (tiles.isProtected(x, y) && !tiles.isOcean(x, y)) {
-          ctx.fillStyle = 'rgba(0, 200, 100, 0.2)';
+          ctx.fillStyle = 'rgba(0, 200, 100, 0.15)';
           ctx.fillRect(sx, sy, sw, sh);
-
-          // Diagonal lines for protected zones
           if (ts > 4) {
-            ctx.strokeStyle = 'rgba(0, 200, 100, 0.3)';
+            ctx.strokeStyle = 'rgba(0, 200, 100, 0.25)';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(sx, sy + sh);
@@ -131,17 +168,29 @@ export class Renderer {
           }
         }
 
-        // Developed tile marker
+        // Developed tile
         if (tiles.isDeveloped(x, y)) {
-          ctx.fillStyle = 'rgba(150, 100, 50, 0.3)';
+          ctx.fillStyle = 'rgba(150, 100, 50, 0.25)';
           ctx.fillRect(sx, sy, sw, sh);
+          if (ts > 15) {
+            ctx.fillStyle = 'rgba(200, 150, 80, 0.7)';
+            const hx = sx + sw * 0.3;
+            const hy = sy + sh * 0.3;
+            const hs = sw * 0.4;
+            ctx.fillRect(hx, hy + hs * 0.4, hs, hs * 0.6);
+            ctx.beginPath();
+            ctx.moveTo(hx, hy + hs * 0.4);
+            ctx.lineTo(hx + hs / 2, hy);
+            ctx.lineTo(hx + hs, hy + hs * 0.4);
+            ctx.fill();
+          }
         }
       }
     }
 
-    // Draw grid lines at high zoom
-    if (ts > 12) {
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+    // Grid lines at high zoom
+    if (ts > 14) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 0.5;
       for (let y = range.y1; y <= range.y2 + 1; y++) {
         const sy = (y * ts + offsetY) | 0;
@@ -159,49 +208,74 @@ export class Renderer {
       }
     }
 
-    // Draw animals
+    // Animal shadows
     const animals = island.entities.animals;
     for (let i = 0; i < animals.length; i++) {
       const a = animals[i];
       const spec = SPECIES[a.speciesId];
       if (!spec) continue;
-
       const ax = a.x * ts + offsetX;
       const ay = a.y * ts + offsetY;
+      if (ax < -20 || ax > cw + 20 || ay < -20 || ay > ch + 20) continue;
+      const size = Math.max(3, spec.size * (ts / 10));
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(ax + 1, ay + 2, size, size * 0.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
-      // Skip if off-screen
+    // Animals
+    for (let i = 0; i < animals.length; i++) {
+      const a = animals[i];
+      const spec = SPECIES[a.speciesId];
+      if (!spec) continue;
+      const ax = a.x * ts + offsetX;
+      const ay = a.y * ts + offsetY;
       if (ax < -20 || ax > cw + 20 || ay < -20 || ay > ch + 20) continue;
 
       const size = Math.max(3, spec.size * (ts / 10));
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.3)';
-      ctx.beginPath();
-      ctx.arc(ax + 1, ay + 1, size, 0, Math.PI * 2);
-      ctx.fill();
+      // Bobbing animation
+      let bobY = 0;
+      if (a.state === 'wander' || a.state === 'seekFood' || a.state === 'seekWater') {
+        bobY = Math.sin(_frameTime * 0.005 + a.id) * size * 0.2;
+      } else if (a.state === 'flee') {
+        bobY = Math.sin(_frameTime * 0.015 + a.id) * size * 0.3;
+      }
 
       // Body
       ctx.fillStyle = spec.color;
       ctx.beginPath();
-      ctx.arc(ax, ay, size, 0, Math.PI * 2);
+      ctx.arc(ax, ay + bobY, size, 0, Math.PI * 2);
       ctx.fill();
 
-      // Energy indicator (ring)
-      if (ts > 6) {
-        ctx.strokeStyle = a.energy > 0.5 ? 'rgba(100,255,100,0.6)' :
-                          a.energy > 0.2 ? 'rgba(255,200,50,0.6)' : 'rgba(255,50,50,0.6)';
+      // Energy ring
+      if (ts > 5) {
+        ctx.strokeStyle = a.energy > 0.5 ? 'rgba(100,255,100,0.5)' :
+                          a.energy > 0.2 ? 'rgba(255,200,50,0.5)' : 'rgba(255,50,50,0.5)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(ax, ay, size + 2, 0, Math.PI * 2 * a.energy);
+        ctx.arc(ax, ay + bobY, size + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * a.energy);
         ctx.stroke();
+      }
+
+      // State indicator
+      if (ts > 10 && ts <= 20) {
+        const stateIcon = a.state === 'flee' ? '!' : a.state === 'rest' ? 'z' : '';
+        if (stateIcon) {
+          ctx.font = `bold ${size}px sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.fillStyle = a.state === 'flee' ? '#ff4444' : '#aaaaff';
+          ctx.fillText(stateIcon, ax, ay + bobY - size - 3);
+        }
       }
 
       // Emoji at high zoom
       if (ts > 20) {
-        ctx.font = `${size * 2}px serif`;
+        ctx.font = `${size * 2.2}px serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        ctx.fillText(spec.emoji, ax, ay);
+        ctx.fillText(spec.emoji, ax, ay + bobY);
       }
     }
 

@@ -15,8 +15,10 @@ export class Camera {
 
   screenToWorld(sx, sy) {
     const rect = this.canvas.getBoundingClientRect();
-    const canvasX = sx - rect.left;
-    const canvasY = sy - rect.top;
+    const dpr = window.devicePixelRatio || 1;
+    // Convert screen coords to canvas pixel coords (accounting for DPR)
+    const canvasX = (sx - rect.left) * dpr;
+    const canvasY = (sy - rect.top) * dpr;
     const ts = this.tileSize;
     const offsetX = this.canvas.width / 2 - this.x * ts;
     const offsetY = this.canvas.height / 2 - this.y * ts;
@@ -37,9 +39,10 @@ export class Camera {
   }
 
   pan(dx, dy) {
+    const dpr = window.devicePixelRatio || 1;
     const ts = this.tileSize;
-    this.x -= dx / ts;
-    this.y -= dy / ts;
+    this.x -= (dx * dpr) / ts;
+    this.y -= (dy * dpr) / ts;
     this._clamp();
   }
 
