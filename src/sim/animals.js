@@ -24,6 +24,9 @@ export function createAnimal(speciesId, x, y) {
     state: 'wander',
     target: null,
     cooldown: 0,
+    // Flocking velocity
+    vx: 0,
+    vy: 0,
   };
 }
 
@@ -81,6 +84,55 @@ class SpatialHash {
 
 const hash = new SpatialHash();
 
+// Flocking constants
+const FLOCK_SEPARATION_DIST = 1.5;
+const FLOCK_ALIGNMENT_WEIGHT = 0.3;
+const FLOCK_COHESION_WEIGHT = 0.2;
+const FLOCK_SEPARATION_WEIGHT = 0.5;
+
+function _computeFlocking(a, sameSpecies) {
+  if (sameSpecies.length <= 1) return { fx: 0, fy: 0 };
+
+  let sepX = 0, sepY = 0;
+  let alignX = 0, alignY = 0;
+  let cohX = 0, cohY = 0;
+  let count = 0;
+
+  for (const other of sameSpecies) {
+    if (other.id === a.id) continue;
+    const dx = a.x - other.x;
+    const dy = a.y - other.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+
+    // Separation: steer away from very close neighbors
+    if (dist < FLOCK_SEPARATION_DIST && dist > 0.01) {
+      sepX += (dx / dist) / dist;
+      sepY += (dy / dist) / dist;
+    }
+
+    // Alignment: match velocity of neighbors
+    alignX += other.vx || 0;
+    alignY += other.vy || 0;
+
+    // Cohesion: move toward center of nearby group
+    cohX += other.x;
+    cohY += other.y;
+    count++;
+  }
+
+  if (count === 0) return { fx: 0, fy: 0 };
+
+  alignX /= count;
+  alignY /= count;
+  cohX = cohX / count - a.x;
+  cohY = cohY / count - a.y;
+
+  return {
+    fx: sepX * FLOCK_SEPARATION_WEIGHT + alignX * FLOCK_ALIGNMENT_WEIGHT + cohX * FLOCK_COHESION_WEIGHT,
+    fy: sepY * FLOCK_SEPARATION_WEIGHT + alignY * FLOCK_ALIGNMENT_WEIGHT + cohY * FLOCK_COHESION_WEIGHT,
+  };
+}
+
 export function simulateAnimals(animals, tiles, governance, tick) {
   // Rebuild spatial hash
   hash.clear();
@@ -119,18 +171,20 @@ export function simulateAnimals(animals, tiles, governance, tick) {
     const inProtected = tiles.inBounds(tx, ty) && tiles.isProtected(tx, ty);
     const huntingAllowed = !inProtected || governance.enforcement < 0.5;
 
+    // Get nearby same-species for flocking
+    const nearby = hash.query(a.x, a.y, 5);
+    const sameSpecies = nearby.filter(o => o.speciesId === a.speciesId);
+
     if (spec.type === 'herbivore') {
-      _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed);
+      _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, sameSpecies);
     } else {
-      _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove);
+      _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove, sameSpecies);
     }
 
     // Reproduction
     if (a.energy > spec.reproductionThreshold && a.cooldown <= 0 && animals.length + toAdd.length < MAX_ANIMALS) {
-      const nearby = hash.query(a.x, a.y, 3);
-      const mate = nearby.find(o =>
+      const mate = sameSpecies.find(o =>
         o.id !== a.id &&
-        o.speciesId === a.speciesId &&
         o.sex !== a.sex &&
         o.energy > 0.4
       );
@@ -168,7 +222,7 @@ export function simulateAnimals(animals, tiles, governance, tick) {
   }
 }
 
-function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
+function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, sameSpecies) {
   // Check fear (nearby predators)
   a.fear = 0;
   const nearbyThreats = hash.query(a.x, a.y, spec.sightRange);
@@ -195,6 +249,12 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
     a.state = 'wander';
   }
 
+  // Compute flocking influence
+  const flock = _computeFlocking(a, sameSpecies);
+  const flockStrength = a.state === 'wander' ? 0.4 : a.state === 'flee' ? 0.6 : 0.15;
+
+  let moveX = 0, moveY = 0;
+
   switch (a.state) {
     case 'flee': {
       // Run away from nearest predator
@@ -207,12 +267,11 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
         }
       }
       const fLen = Math.sqrt(fleeX * fleeX + fleeY * fleeY) || 1;
-      a.x += (fleeX / fLen) * spec.speed * 1.3;
-      a.y += (fleeY / fLen) * spec.speed * 1.3;
+      moveX = (fleeX / fLen) * spec.speed * 1.3;
+      moveY = (fleeY / fLen) * spec.speed * 1.3;
       break;
     }
     case 'seekFood': {
-      // Find tile with most vegetation nearby
       let bestVeg = 0, bestX = a.x, bestY = a.y;
       const range = 4;
       const ax = Math.floor(a.x);
@@ -230,7 +289,11 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
           }
         }
       }
-      _moveToward(a, bestX, bestY, spec.speed);
+      const tdx = bestX - a.x;
+      const tdy = bestY - a.y;
+      const tdist = Math.sqrt(tdx * tdx + tdy * tdy) || 1;
+      moveX = (tdx / tdist) * spec.speed;
+      moveY = (tdy / tdist) * spec.speed;
 
       // Eat at current tile
       const tx = Math.floor(a.x);
@@ -247,7 +310,6 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
       break;
     }
     case 'seekWater': {
-      // Find nearest water
       let bestDist = Infinity, bestX = a.x, bestY = a.y;
       const range = 6;
       const ax = Math.floor(a.x);
@@ -265,7 +327,11 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
           }
         }
       }
-      _moveToward(a, bestX, bestY, spec.speed);
+      const wdx = bestX - a.x;
+      const wdy = bestY - a.y;
+      const wdist = Math.sqrt(wdx * wdx + wdy * wdy) || 1;
+      moveX = (wdx / wdist) * spec.speed;
+      moveY = (wdy / wdist) * spec.speed;
 
       // Drink
       const tx = Math.floor(a.x);
@@ -280,15 +346,26 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed) {
       a.energy = Math.min(1, a.energy + 0.005);
       break;
     default: // wander
-      a.x += (_rng() - 0.5) * spec.speed;
-      a.y += (_rng() - 0.5) * spec.speed;
-      // Stay on land
-      _stayOnLand(a, tiles);
+      moveX = (_rng() - 0.5) * spec.speed;
+      moveY = (_rng() - 0.5) * spec.speed;
       break;
   }
+
+  // Apply flocking
+  moveX += flock.fx * flockStrength;
+  moveY += flock.fy * flockStrength;
+
+  // Smooth velocity
+  a.vx = a.vx * 0.6 + moveX * 0.4;
+  a.vy = a.vy * 0.6 + moveY * 0.4;
+
+  a.x += a.vx;
+  a.y += a.vy;
+
+  _stayOnLand(a, tiles);
 }
 
-function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove) {
+function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove, sameSpecies) {
   if (a.hunger > 0.5 && huntingAllowed) {
     a.state = 'seekFood';
   } else if (a.thirst > 0.6) {
@@ -299,9 +376,13 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
     a.state = 'wander';
   }
 
+  const flock = _computeFlocking(a, sameSpecies);
+  const flockStrength = a.state === 'wander' ? 0.25 : 0.1;
+
+  let moveX = 0, moveY = 0;
+
   switch (a.state) {
     case 'seekFood': {
-      // Find prey
       const nearby = hash.query(a.x, a.y, spec.sightRange);
       let closestPrey = null;
       let closestDist = Infinity;
@@ -317,7 +398,11 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
         }
       }
       if (closestPrey) {
-        _moveToward(a, closestPrey.x, closestPrey.y, spec.speed);
+        const pdx = closestPrey.x - a.x;
+        const pdy = closestPrey.y - a.y;
+        const pdist = Math.sqrt(pdx * pdx + pdy * pdy) || 1;
+        moveX = (pdx / pdist) * spec.speed;
+        moveY = (pdy / pdist) * spec.speed;
         // Catch prey
         if (closestDist < 1) {
           const idx = animals.indexOf(closestPrey);
@@ -328,8 +413,8 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
           }
         }
       } else {
-        a.x += (_rng() - 0.5) * spec.speed;
-        a.y += (_rng() - 0.5) * spec.speed;
+        moveX = (_rng() - 0.5) * spec.speed;
+        moveY = (_rng() - 0.5) * spec.speed;
       }
       break;
     }
@@ -351,7 +436,11 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
           }
         }
       }
-      _moveToward(a, bestX, bestY, spec.speed);
+      const wdx = bestX - a.x;
+      const wdy = bestY - a.y;
+      const wdist = Math.sqrt(wdx * wdx + wdy * wdy) || 1;
+      moveX = (wdx / wdist) * spec.speed;
+      moveY = (wdy / wdist) * spec.speed;
       const tx = Math.floor(a.x);
       const ty = Math.floor(a.y);
       if (tiles.inBounds(tx, ty) && tiles.getWater(tx, ty) > 0.2) {
@@ -364,30 +453,35 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
       a.energy = Math.min(1, a.energy + 0.005);
       break;
     default:
-      a.x += (_rng() - 0.5) * spec.speed;
-      a.y += (_rng() - 0.5) * spec.speed;
-      _stayOnLand(a, tiles);
+      moveX = (_rng() - 0.5) * spec.speed;
+      moveY = (_rng() - 0.5) * spec.speed;
       break;
   }
-}
 
-function _moveToward(a, tx, ty, speed) {
-  const dx = tx - a.x;
-  const dy = ty - a.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist > 0.1) {
-    a.x += (dx / dist) * speed;
-    a.y += (dy / dist) * speed;
-  }
+  // Apply flocking
+  moveX += flock.fx * flockStrength;
+  moveY += flock.fy * flockStrength;
+
+  // Smooth velocity
+  a.vx = a.vx * 0.6 + moveX * 0.4;
+  a.vy = a.vy * 0.6 + moveY * 0.4;
+
+  a.x += a.vx;
+  a.y += a.vy;
+
+  _stayOnLand(a, tiles);
 }
 
 function _stayOnLand(a, tiles) {
   const tx = Math.floor(a.x);
   const ty = Math.floor(a.y);
   if (!tiles.inBounds(tx, ty) || tiles.isOcean(tx, ty)) {
-    // Push back toward center
     const cx = tiles.w / 2;
     const cy = tiles.h / 2;
-    _moveToward(a, cx, cy, 0.5);
+    const dx = cx - a.x;
+    const dy = cy - a.y;
+    const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+    a.x += (dx / dist) * 0.5;
+    a.y += (dy / dist) * 0.5;
   }
 }

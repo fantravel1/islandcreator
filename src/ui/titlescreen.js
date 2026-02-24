@@ -26,7 +26,27 @@ export class TitleScreen {
           <h1 class="title-name">IslandCreator</h1>
           <p class="title-tagline">Build your world. Govern with care. Watch it live.</p>
         </div>
-        <div class="title-buttons">
+        <div class="title-create-form" id="title-create-form" style="display:none">
+          <div class="title-input-group">
+            <label class="title-label">Island Name</label>
+            <input type="text" class="title-input" id="island-name-input" placeholder="My Island" maxlength="24" autocomplete="off" />
+          </div>
+          <div class="title-input-group">
+            <label class="title-label">World Seed</label>
+            <div class="title-seed-row">
+              <input type="text" class="title-input title-seed" id="island-seed-input" placeholder="Random" maxlength="8" autocomplete="off" inputmode="numeric" />
+              <button class="title-seed-dice" id="seed-dice">🎲</button>
+            </div>
+          </div>
+          <button class="title-btn title-btn-primary" data-action="generate">
+            <span class="btn-icon">🌊</span>
+            <span class="btn-text">Generate Island</span>
+          </button>
+          <button class="title-btn title-btn-back" data-action="back">
+            <span class="btn-text">← Back</span>
+          </button>
+        </div>
+        <div class="title-buttons" id="title-main-buttons">
           ${savedGame ? `
             <button class="title-btn title-btn-primary" data-action="continue">
               <span class="btn-icon">▶</span>
@@ -51,7 +71,20 @@ export class TitleScreen {
   }
 
   _setupEvents() {
+    // Dice button for random seed
     this.el.addEventListener('pointerdown', (e) => {
+      const dice = e.target.closest('#seed-dice');
+      if (dice) {
+        e.preventDefault();
+        e.stopPropagation();
+        const seedInput = this.el.querySelector('#island-seed-input');
+        if (seedInput) {
+          seedInput.value = ((Math.random() * 999999) | 0).toString();
+        }
+        if (navigator.vibrate) navigator.vibrate(15);
+        return;
+      }
+
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       e.preventDefault();
@@ -66,17 +99,54 @@ export class TitleScreen {
         this._fadeOut(() => bus.emit('titleAction', { action: 'continue' }));
       } else if (action === 'new') {
         if (hasSave()) {
-          // Confirm before overwriting
           btn.innerHTML = '<span class="btn-icon">⚠️</span><span class="btn-text">Tap again to confirm</span>';
           btn.dataset.action = 'confirmNew';
         } else {
-          this._fadeOut(() => bus.emit('titleAction', { action: 'new' }));
+          this._showCreateForm();
         }
       } else if (action === 'confirmNew') {
         deleteSave();
-        this._fadeOut(() => bus.emit('titleAction', { action: 'new' }));
+        this._showCreateForm();
+      } else if (action === 'generate') {
+        const nameInput = this.el.querySelector('#island-name-input');
+        const seedInput = this.el.querySelector('#island-seed-input');
+        const name = (nameInput?.value || '').trim() || 'My Island';
+        const seedStr = (seedInput?.value || '').trim();
+        const seed = seedStr ? parseInt(seedStr, 10) || 0 : (Math.random() * 999999) | 0;
+        this._fadeOut(() => bus.emit('titleAction', { action: 'new', name, seed }));
+      } else if (action === 'back') {
+        this._hideCreateForm();
       }
     });
+
+    // Prevent keyboard zoom
+    this.el.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const genBtn = this.el.querySelector('[data-action="generate"]');
+        if (genBtn) genBtn.click();
+      }
+    });
+  }
+
+  _showCreateForm() {
+    const mainBtns = this.el.querySelector('#title-main-buttons');
+    const form = this.el.querySelector('#title-create-form');
+    if (mainBtns) mainBtns.style.display = 'none';
+    if (form) {
+      form.style.display = 'flex';
+      form.classList.add('form-enter');
+      setTimeout(() => {
+        const nameInput = form.querySelector('#island-name-input');
+        if (nameInput) nameInput.focus();
+      }, 300);
+    }
+  }
+
+  _hideCreateForm() {
+    const mainBtns = this.el.querySelector('#title-main-buttons');
+    const form = this.el.querySelector('#title-create-form');
+    if (form) form.style.display = 'none';
+    if (mainBtns) mainBtns.style.display = 'flex';
   }
 
   _fadeOut(cb) {
@@ -105,7 +175,6 @@ export class TitleScreen {
       const h = canvas.height;
       ctx.clearRect(0, 0, w, h);
 
-      // Draw layered waves
       const layers = [
         { y: h * 0.65, amp: 20, freq: 0.008, speed: 0.0008, color: 'rgba(15, 60, 100, 0.4)' },
         { y: h * 0.70, amp: 15, freq: 0.012, speed: 0.001, color: 'rgba(20, 80, 120, 0.3)' },
@@ -118,7 +187,7 @@ export class TitleScreen {
         ctx.moveTo(0, h);
         for (let x = 0; x <= w; x += 3) {
           const y = layer.y + Math.sin(x * layer.freq + t * layer.speed) * layer.amp
-                             + Math.sin(x * layer.freq * 0.5 + t * layer.speed * 0.7) * layer.amp * 0.5;
+                               + Math.sin(x * layer.freq * 0.5 + t * layer.speed * 0.7) * layer.amp * 0.5;
           ctx.lineTo(x, y);
         }
         ctx.lineTo(w, h);
@@ -130,7 +199,6 @@ export class TitleScreen {
     };
     draw(0);
 
-    // Cleanup when removed
     const observer = new MutationObserver(() => {
       if (!document.contains(this.el)) {
         cancelAnimationFrame(raf);

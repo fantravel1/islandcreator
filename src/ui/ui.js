@@ -9,10 +9,11 @@ import {
 import { createAnimal } from '../sim/animals.js';
 
 export class UI {
-  constructor(uiContainer, gameState, overlays, zoneManager) {
+  constructor(uiContainer, gameState, overlays, zoneManager, undoManager) {
     this.gameState = gameState;
     this.overlays = overlays;
     this.zoneManager = zoneManager;
+    this.undoManager = undoManager;
 
     this.toolbar = new Toolbar(uiContainer);
     this.hud = new HUD(uiContainer);
@@ -67,6 +68,50 @@ export class UI {
     bus.on('dragEnd', () => this._onDragEnd());
     bus.on('pinch', (e) => this._onPinch(e));
     bus.on('pan', (e) => this._onPan(e));
+
+    // Radial menu action
+    bus.on('radialAction', ({ action, worldX, worldY }) => {
+      this._handleRadialAction(action, worldX, worldY);
+    });
+
+    // Undo keyboard shortcut
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        this._performUndo();
+      }
+    });
+  }
+
+  _handleRadialAction(action, worldX, worldY) {
+    // Switch tool based on radial menu selection
+    const toolMap = {
+      'inspect': TOOL_INSPECT,
+      'sculpt': TOOL_SCULPT,
+      'biome': TOOL_BIOME,
+      'animal': TOOL_ANIMAL,
+      'zone': TOOL_ZONE,
+    };
+    const tool = toolMap[action];
+    if (tool) {
+      this.toolbar.setTool(tool); // setTool already emits toolChanged
+    }
+  }
+
+  _performUndo() {
+    if (this.undoManager && this.undoManager.canUndo()) {
+      const tiles = this.gameState.islands[0]?.world.tiles;
+      if (tiles) {
+        this.undoManager.undo(tiles);
+        this.gameState._dirty = true;
+        if (navigator.vibrate) navigator.vibrate([10, 20, 10]);
+        bus.emit('notification', {
+          message: 'Undo successful',
+          type: 'info',
+          icon: '↩️',
+        });
+      }
+    }
   }
 
   _onTap(e) {
@@ -104,7 +149,6 @@ export class UI {
         if (animal) {
           this.gameState.islands[0].entities.animals.push(animal);
           this.gameState._dirty = true;
-          // Haptic feedback
           if (navigator.vibrate) navigator.vibrate(20);
         }
       }
@@ -113,8 +157,15 @@ export class UI {
       this.gameState._dirty = true;
       if (navigator.vibrate) navigator.vibrate(15);
     } else if (tool === TOOL_SCULPT) {
+      // Save undo snapshot before sculpting
+      if (this.undoManager) {
+        this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
+      }
       this._applySculpt(tiles, tx, ty);
     } else if (tool === TOOL_BIOME) {
+      if (this.undoManager) {
+        this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
+      }
       this._applyBiome(tiles, tx, ty);
     }
   }
