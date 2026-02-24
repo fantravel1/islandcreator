@@ -9,11 +9,12 @@ import { OverlayRenderer } from './render/overlays.js';
 import { ParticleSystem } from './render/particles.js';
 import { generateIsland } from './world/terrainGen.js';
 import { ZoneManager } from './world/zones.js';
-import { simTick } from './sim/simTick.js';
+import { simTick, setWeatherSystem } from './sim/simTick.js';
 import { computeStats } from './sim/stats.js';
 import { createGovernanceState } from './sim/governance.js';
 import { checkCollapseRisks } from './sim/collapse.js';
 import { computeEcoScore, getEcoRating } from './sim/ecoscore.js';
+import { WeatherSystem } from './sim/weather.js';
 import { UI } from './ui/ui.js';
 import { TitleScreen } from './ui/titlescreen.js';
 import { MiniMap } from './ui/minimap.js';
@@ -23,6 +24,8 @@ import { Tutorial } from './ui/tutorial.js';
 import { RadialMenu } from './ui/radialmenu.js';
 import { OverlayModePanel } from './ui/overlaymodes.js';
 import { SettingsPanel } from './ui/settings.js';
+import { AchievementSystem } from './ui/achievements.js';
+import { PhotoMode } from './ui/photomode.js';
 import { AmbientAudio } from './audio/ambient.js';
 import { saveGame } from './storage/save.js';
 import { loadGame, hasSave } from './storage/load.js';
@@ -53,7 +56,7 @@ function createNewGameState(seed, islandName) {
         landTiles: 0, protectedTiles: 0, developedTiles: 0,
       },
     }],
-    flags: { tutorialDone: false },
+    flags: { tutorialDone: false, achievements: [], achievementCounters: {} },
     _dirty: false,
     _camera: null,
     _gameLoop: null,
@@ -97,13 +100,18 @@ function restoreGameState(saveData) {
   const zoneManager = new ZoneManager(tiles);
   if (data.zones) zoneManager.loadJSON(data.zones);
 
+  // Ensure entities.structures exists for older saves
+  if (!data.islands[0].entities.structures) {
+    data.islands[0].entities.structures = [];
+  }
+
   return {
     meta: data.meta,
     settings: data.settings || { sound: false, haptics: true, simSpeed: 1, particles: true, gridLines: true, dayNight: true, quality: 'high' },
     time: data.time,
     governance: data.governance,
     islands: data.islands,
-    flags: data.flags || { tutorialDone: false },
+    flags: data.flags || { tutorialDone: false, achievements: [], achievementCounters: {} },
     _dirty: false,
     _camera: null,
     _gameLoop: null,
@@ -133,7 +141,6 @@ function startGame(gameState) {
   const overlays = new OverlayRenderer(camera);
   const particles = new ParticleSystem();
 
-  // Apply saved settings to renderer
   renderer.showGridLines = gameState.settings.gridLines !== false;
   renderer.showDayNight = gameState.settings.dayNight !== false;
 
@@ -143,9 +150,16 @@ function startGame(gameState) {
   // Undo manager
   const undoManager = new UndoManager();
 
+  // Weather system
+  const weatherSystem = new WeatherSystem();
+  setWeatherSystem(weatherSystem);
+
   // UI
   const zoneManager = gameState._zoneManager;
   const ui = new UI(uiContainer, gameState, overlays, zoneManager, undoManager);
+
+  // Set island name in HUD
+  ui.hud.setIslandName(gameState.islands[0].name);
 
   // Radial context menu
   const radialMenu = new RadialMenu(uiContainer);
@@ -159,6 +173,13 @@ function startGame(gameState) {
   // Settings panel
   const settingsPanel = new SettingsPanel(uiContainer);
   settingsPanel.setGameState(gameState);
+
+  // Achievements
+  const achievements = new AchievementSystem(uiContainer);
+  achievements.loadState(gameState.flags);
+
+  // Photo mode
+  const photoMode = new PhotoMode(uiContainer, canvas);
 
   // Settings gear button
   const gearBtn = document.createElement('button');
@@ -209,7 +230,7 @@ function startGame(gameState) {
   // Audio
   const audio = new AmbientAudio();
 
-  // Sound toggle button in HUD stats
+  // Sound toggle
   const soundBtn = document.createElement('button');
   soundBtn.className = 'stat-item sound-toggle';
   soundBtn.textContent = '🔇';
@@ -226,6 +247,7 @@ function startGame(gameState) {
     if (statsEl) {
       statsEl.appendChild(ecoScoreEl);
       statsEl.appendChild(undoBtn);
+      statsEl.appendChild(photoMode.btn);
       statsEl.appendChild(popGraph.toggleBtn);
       statsEl.appendChild(soundBtn);
       statsEl.appendChild(gearBtn);
@@ -245,9 +267,15 @@ function startGame(gameState) {
   // Scheduler
   const scheduler = new Scheduler();
   scheduler.add('autosave', AUTOSAVE_INTERVAL, () => {
-    if (gameState._dirty) saveGame(gameState);
+    if (gameState._dirty) {
+      achievements.saveState(gameState.flags);
+      saveGame(gameState);
+    }
   });
-  scheduler.add('uiUpdate', 500, () => ui.update());
+  scheduler.add('uiUpdate', 500, () => {
+    ui.update();
+    ui.hud.setWeather(weatherSystem.current);
+  });
   scheduler.add('minimap', 2000, (now) => minimap.update(now));
   scheduler.add('audio', 5000, () => audio.setSeason(gameState.time.season));
   scheduler.add('collapse', 8000, () => checkCollapseRisks(gameState));
@@ -256,6 +284,10 @@ function startGame(gameState) {
     const rating = getEcoRating(score);
     ecoScoreEl.innerHTML = `<span style="color:${rating.color};font-weight:700">${rating.grade}</span> ${score}`;
     ecoScoreEl.title = rating.label;
+    achievements.setEcoScore(score);
+  });
+  scheduler.add('achievements', 5000, () => {
+    achievements.check(gameState);
   });
 
   // Initial stats
@@ -284,7 +316,10 @@ function startGame(gameState) {
 
   // Save on blur
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && gameState._dirty) saveGame(gameState);
+    if (document.hidden && gameState._dirty) {
+      achievements.saveState(gameState.flags);
+      saveGame(gameState);
+    }
   });
 
   // Start
@@ -305,7 +340,6 @@ function boot() {
   const uiContainer = document.getElementById('ui-container');
   if (!canvas || !uiContainer) return;
 
-  // Resize canvas to fill screen
   const cam = { resize() {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvas.clientWidth * dpr;
@@ -314,7 +348,6 @@ function boot() {
   cam.resize();
   window.addEventListener('resize', cam.resize);
 
-  // Show title screen
   const loading = document.getElementById('loading');
   if (loading) {
     loading.style.opacity = '0';

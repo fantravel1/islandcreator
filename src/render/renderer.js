@@ -2,6 +2,7 @@ import { BIOME_DATA } from '../world/biomes.js';
 import { BIOME_OCEAN } from '../data/constants.js';
 import { SPECIES } from '../data/species.js';
 import { overlayTileColor, OVERLAY_NONE } from '../ui/overlaymodes.js';
+import { STRUCTURE_TYPES } from '../sim/structures.js';
 
 const _rgb = [0, 0, 0];
 let _frameTime = 0;
@@ -229,6 +230,35 @@ export class Renderer {
             ctx.lineTo(hx + hs, hy + hs * 0.4);
             ctx.fill();
           }
+        }
+      }
+    }
+
+    // Structures
+    const structures = island.entities.structures;
+    if (structures && ts > 6) {
+      for (const s of structures) {
+        const type = STRUCTURE_TYPES[s.typeId];
+        if (!type) continue;
+        const sx = (s.x * ts + offsetX) | 0;
+        const sy = (s.y * ts + offsetY) | 0;
+        if (sx < -ts * 4 || sx > cw + ts * 4 || sy < -ts * 4 || sy > ch + ts * 4) continue;
+        const sz = type.size * ts;
+
+        if (ts > 15) {
+          // Show emoji at high zoom
+          ctx.font = `${sz * 0.7}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(type.emoji, sx + ts * 0.5, sy + ts * 0.5);
+        } else {
+          // Simple colored marker at low zoom
+          ctx.fillStyle = 'rgba(200, 160, 80, 0.6)';
+          const r = Math.floor(type.size / 2);
+          ctx.fillRect(sx - r * ts, sy - r * ts, sz, sz);
+          ctx.strokeStyle = 'rgba(255, 220, 120, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(sx - r * ts, sy - r * ts, sz, sz);
         }
       }
     }

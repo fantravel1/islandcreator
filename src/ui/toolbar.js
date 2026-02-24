@@ -1,16 +1,18 @@
 import { bus } from '../engine/events.js';
 import {
   TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
+  TOOL_BUILD,
   BIOME_FOREST, BIOME_GRASSLAND, BIOME_DESERT,
 } from '../data/constants.js';
 import { SPECIES_LIST } from '../data/species.js';
-import { getBiomeName } from '../world/biomes.js';
+import { STRUCTURE_LIST } from '../sim/structures.js';
 
 const TOOLS = [
   { id: TOOL_INSPECT, icon: '👆', label: 'Select' },
   { id: TOOL_SCULPT, icon: '⛰️', label: 'Sculpt' },
   { id: TOOL_BIOME, icon: '🌿', label: 'Biome' },
   { id: TOOL_ANIMAL, icon: '🦌', label: 'Animals' },
+  { id: TOOL_BUILD, icon: '🏘️', label: 'Build' },
   { id: TOOL_ZONE, icon: '🛡️', label: 'Protect' },
   { id: TOOL_GOVERNANCE, icon: '⚖️', label: 'Govern' },
 ];
@@ -27,7 +29,8 @@ export class Toolbar {
     this.activeTool = TOOL_INSPECT;
     this.selectedBiome = BIOME_FOREST;
     this.selectedSpecies = 'deer';
-    this.sculptMode = 'raise'; // 'raise' or 'lower'
+    this.selectedStructure = 'village';
+    this.sculptMode = 'raise';
 
     this.el = document.createElement('div');
     this.el.className = 'toolbar';
@@ -106,6 +109,20 @@ export class Toolbar {
           this.sculptMode = mode;
           this._updateSubMenu();
           bus.emit('sculptModeChanged', { mode });
+        });
+        this.subMenu.appendChild(btn);
+      }
+    } else if (this.activeTool === TOOL_BUILD) {
+      this.subMenu.style.display = 'flex';
+      for (const struct of STRUCTURE_LIST) {
+        const btn = document.createElement('button');
+        btn.className = 'submenu-btn' + (struct.id === this.selectedStructure ? ' active' : '');
+        btn.innerHTML = `${struct.emoji} ${struct.name}`;
+        btn.addEventListener('pointerdown', (e) => {
+          e.stopPropagation();
+          this.selectedStructure = struct.id;
+          this._updateSubMenu();
+          bus.emit('structureSelected', { structure: struct.id });
         });
         this.subMenu.appendChild(btn);
       }

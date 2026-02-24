@@ -49,6 +49,7 @@ export const TOOL_ANIMAL = 'animal';
 export const TOOL_ZONE = 'zone';
 export const TOOL_GOVERNANCE = 'governance';
 export const TOOL_INSPECT = 'inspect';
+export const TOOL_BUILD = 'build';
 
 // Brush
 export const BRUSH_RADIUS = 3;

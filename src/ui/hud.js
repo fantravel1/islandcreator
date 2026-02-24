@@ -2,9 +2,19 @@ import { bus } from '../engine/events.js';
 import { SEASON_NAMES } from '../data/constants.js';
 import { SPECIES } from '../data/species.js';
 
+const WEATHER_ICONS = {
+  clear: '☀️',
+  rain: '🌧️',
+  storm: '⛈️',
+  drought: '🏜️',
+  heatwave: '🔥',
+};
+
 export class HUD {
   constructor(container) {
     this.container = container;
+    this._islandName = 'My Island';
+    this._weather = 'clear';
 
     this.el = document.createElement('div');
     this.el.className = 'hud';
@@ -12,10 +22,10 @@ export class HUD {
     // Top-left: Island info
     this.infoEl = document.createElement('div');
     this.infoEl.className = 'hud-info';
-    this.infoEl.innerHTML = '<span class="hud-title">IslandCreator</span>';
+    this.infoEl.innerHTML = `<span class="hud-title" id="hud-island-name">${this._islandName}</span><span class="hud-weather" id="hud-weather">${WEATHER_ICONS.clear}</span>`;
     this.el.appendChild(this.infoEl);
 
-    // Top-right: Time controls
+    // Time controls
     this.timeEl = document.createElement('div');
     this.timeEl.className = 'hud-time';
     this.el.appendChild(this.timeEl);
@@ -29,6 +39,21 @@ export class HUD {
 
     this.currentSpeed = 1;
     this._renderTimeControls();
+  }
+
+  setIslandName(name) {
+    this._islandName = name;
+    const el = document.getElementById('hud-island-name');
+    if (el) el.textContent = name;
+  }
+
+  setWeather(weather) {
+    this._weather = weather;
+    const el = document.getElementById('hud-weather');
+    if (el) {
+      el.textContent = WEATHER_ICONS[weather] || WEATHER_ICONS.clear;
+      el.title = weather.charAt(0).toUpperCase() + weather.slice(1);
+    }
   }
 
   _renderTimeControls() {
@@ -83,6 +108,7 @@ export class HUD {
 
     html += `<span class="stat-item stat-veg">🌱${(stats.avgVeg * 100).toFixed(0)}%</span>`;
     html += `<span class="stat-item stat-soil">🟤${(stats.avgSoil * 100).toFixed(0)}%</span>`;
+    html += `<span class="stat-item stat-water">💧${(stats.avgWater * 100).toFixed(0)}%</span>`;
 
     this.statsEl.innerHTML = html;
   }

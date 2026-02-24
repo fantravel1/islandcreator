@@ -4,9 +4,11 @@ import { HUD } from './hud.js';
 import { Inspector } from './inspector.js';
 import {
   TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
+  TOOL_BUILD,
   BRUSH_RADIUS, SCULPT_STRENGTH,
 } from '../data/constants.js';
 import { createAnimal } from '../sim/animals.js';
+import { placeStructure, canPlaceStructure } from '../sim/structures.js';
 
 export class UI {
   constructor(uiContainer, gameState, overlays, zoneManager, undoManager) {
@@ -84,7 +86,6 @@ export class UI {
   }
 
   _handleRadialAction(action, worldX, worldY) {
-    // Switch tool based on radial menu selection
     const toolMap = {
       'inspect': TOOL_INSPECT,
       'sculpt': TOOL_SCULPT,
@@ -94,7 +95,7 @@ export class UI {
     };
     const tool = toolMap[action];
     if (tool) {
-      this.toolbar.setTool(tool); // setTool already emits toolChanged
+      this.toolbar.setTool(tool);
     }
   }
 
@@ -125,7 +126,6 @@ export class UI {
     if (!tiles.inBounds(tx, ty)) return;
 
     if (tool === TOOL_INSPECT) {
-      // Check for animal near tap
       const animals = this.gameState.islands[0].entities.animals;
       let closest = null;
       let closestDist = 4;
@@ -152,16 +152,32 @@ export class UI {
           if (navigator.vibrate) navigator.vibrate(20);
         }
       }
+    } else if (tool === TOOL_BUILD) {
+      const structType = this.toolbar.selectedStructure;
+      const structures = this.gameState.islands[0].entities.structures;
+      if (canPlaceStructure(structType, tiles, tx, ty)) {
+        placeStructure(structType, tiles, tx, ty, structures);
+        this.gameState._dirty = true;
+        if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+        bus.emit('sculptApplied'); // for achievement tracking
+      } else {
+        bus.emit('notification', {
+          message: 'Cannot build here. Need open, undeveloped land.',
+          type: 'warning',
+          icon: '⚠️',
+        });
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
+      }
     } else if (tool === TOOL_ZONE) {
       this.zoneManager.toggleTile(tx, ty);
       this.gameState._dirty = true;
       if (navigator.vibrate) navigator.vibrate(15);
     } else if (tool === TOOL_SCULPT) {
-      // Save undo snapshot before sculpting
       if (this.undoManager) {
         this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
       }
       this._applySculpt(tiles, tx, ty);
+      bus.emit('sculptApplied');
     } else if (tool === TOOL_BIOME) {
       if (this.undoManager) {
         this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
@@ -185,7 +201,6 @@ export class UI {
     } else if (tool === TOOL_BIOME) {
       this._applyBiome(tiles, tx, ty);
     } else if (tool === TOOL_INSPECT) {
-      // Single-finger pan when no tool active
       const cam = this.gameState._camera;
       if (cam) cam.pan(e.dx, e.dy);
     } else if (tool === TOOL_ZONE) {
