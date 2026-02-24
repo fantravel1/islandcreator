@@ -1,4 +1,5 @@
-import { GRID_SIZE, SIM_CHUNKS, TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS_PER_YEAR } from '../data/constants.js';
+import { GRID_SIZE, SIM_CHUNKS, TICKS_PER_DAY, DAYS_PER_SEASON, SEASONS_PER_YEAR, SEASON_NAMES } from '../data/constants.js';
+import { bus } from '../engine/events.js';
 import { applyClimate } from './climate.js';
 import { simulateWater } from './water.js';
 import { simulateSoil } from './soil.js';
@@ -11,6 +12,11 @@ import { checkRandomEvents } from './events.js';
 
 let _tickCount = 0;
 let _weatherSystem = null;
+let _ecoScore = 0;
+
+export function setEcoScoreForSim(score) {
+  _ecoScore = score;
+}
 
 export function setWeatherSystem(ws) {
   _weatherSystem = ws;
@@ -37,7 +43,23 @@ export function simTick(gameState) {
       time.season = (time.season + 1) % SEASONS_PER_YEAR;
       if (time.season === 0) {
         time.year++;
+        bus.emit('storyEvent', {
+          text: `Year ${time.year + 1} begins on ${island.name}.`,
+          type: 'event',
+          detail: `${animals.length} animals roam the island.`,
+        });
       }
+      const seasonFlavor = [
+        'Fresh growth stirs across the land.',
+        'Warm days and long light bathe the island.',
+        'Leaves turn and the air cools.',
+        'Cold settles in. The island endures.',
+      ];
+      bus.emit('storyEvent', {
+        text: `${SEASON_NAMES[time.season]}, Year ${time.year + 1}.`,
+        type: 'event',
+        detail: seasonFlavor[time.season],
+      });
     }
   }
 
@@ -61,7 +83,7 @@ export function simTick(gameState) {
 
   // Structures every 10 ticks
   if (_tickCount % 10 === 0 && structures) {
-    simulateStructures(structures, tiles);
+    simulateStructures(structures, tiles, _ecoScore);
   }
 
   // Animals run every tick

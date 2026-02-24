@@ -9,7 +9,7 @@ import { OverlayRenderer } from './render/overlays.js';
 import { ParticleSystem } from './render/particles.js';
 import { generateIsland } from './world/terrainGen.js';
 import { ZoneManager } from './world/zones.js';
-import { simTick, setWeatherSystem } from './sim/simTick.js';
+import { simTick, setWeatherSystem, setEcoScoreForSim } from './sim/simTick.js';
 import { computeStats } from './sim/stats.js';
 import { createGovernanceState } from './sim/governance.js';
 import { checkCollapseRisks } from './sim/collapse.js';
@@ -32,8 +32,12 @@ import { loadGame, hasSave } from './storage/load.js';
 import { migrate } from './storage/migrations.js';
 import { createAnimal } from './sim/animals.js';
 import { GRID_W, GRID_H, AUTOSAVE_INTERVAL } from './data/constants.js';
-import { SPECIES_LIST } from './data/species.js';
+import { BASE_SPECIES } from './data/species.js';
 import { createRng } from './engine/rng.js';
+import { MilestoneSystem } from './sim/milestones.js';
+import { NotableSystem } from './sim/notables.js';
+import { StoryFeed } from './ui/storyfeed.js';
+import { setEcoScoreForEvents, loadEventState, saveEventState } from './sim/events.js';
 
 function createNewGameState(seed, islandName) {
   const tiles = generateIsland(seed);
@@ -83,7 +87,7 @@ function spawnInitialAnimals(gameState, seed) {
   if (landTiles.length === 0) return;
 
   const spawnCounts = { deer: 8, rabbit: 12, wolf: 3, hawk: 2 };
-  for (const spec of SPECIES_LIST) {
+  for (const spec of BASE_SPECIES) {
     const count = spawnCounts[spec.id] || 4;
     for (let i = 0; i < count; i++) {
       const idx = (rng() * landTiles.length) | 0;
@@ -198,6 +202,29 @@ function startGame(gameState) {
   settingsPanel.setGameState(gameState);
   settingsPanel.setAchievements(achievements);
 
+  // Milestone progression system
+  const milestones = new MilestoneSystem();
+  milestones.loadState(gameState.flags);
+
+  // Notable animals system
+  const notables = new NotableSystem();
+  notables.loadState(gameState.flags);
+  gameState._notables = notables;
+
+  // Track kills and births for notables
+  bus.on('animalKill', ({ predatorId }) => notables.recordKill(predatorId));
+  bus.on('animalBirth', ({ parentId, mateId }) => {
+    notables.recordBirth(parentId);
+    notables.recordBirth(mateId);
+  });
+
+  // Story feed (narrative journal)
+  const storyFeed = new StoryFeed(uiContainer);
+  storyFeed.setGameState(gameState);
+
+  // Event state (species unlocks)
+  loadEventState(gameState.flags);
+
   // Photo mode
   const photoMode = new PhotoMode(uiContainer, canvas);
 
@@ -289,6 +316,9 @@ function startGame(gameState) {
   scheduler.add('autosave', AUTOSAVE_INTERVAL, () => {
     if (gameState._dirty) {
       achievements.saveState(gameState.flags);
+      milestones.saveState(gameState.flags);
+      notables.saveState(gameState.flags);
+      saveEventState(gameState.flags);
       saveGame(gameState);
     }
   });
@@ -305,9 +335,18 @@ function startGame(gameState) {
     ecoScoreEl.innerHTML = `<span style="color:${rating.color};font-weight:700">${rating.grade}</span> ${score}`;
     ecoScoreEl.title = rating.label;
     achievements.setEcoScore(score);
+    milestones.setEcoScore(score);
+    setEcoScoreForEvents(score);
+    setEcoScoreForSim(score);
   });
   scheduler.add('achievements', 5000, () => {
     achievements.check(gameState);
+  });
+  scheduler.add('milestones', 5000, () => {
+    milestones.check(gameState);
+  });
+  scheduler.add('notables', 5000, () => {
+    notables.update(gameState.islands[0].entities.animals);
   });
 
   // Initial stats
@@ -338,6 +377,9 @@ function startGame(gameState) {
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && gameState._dirty) {
       achievements.saveState(gameState.flags);
+      milestones.saveState(gameState.flags);
+      notables.saveState(gameState.flags);
+      saveEventState(gameState.flags);
       saveGame(gameState);
     }
   });
@@ -345,14 +387,14 @@ function startGame(gameState) {
   // Start
   gameLoop.start();
 
-  // Initial notification
+  // Initial story
   setTimeout(() => {
-    bus.emit('notification', {
-      message: `Welcome to ${gameState.islands[0].name}! Explore and shape your ecosystem.`,
-      type: 'info',
-      icon: '🏝️',
+    bus.emit('storyEvent', {
+      text: `Welcome to ${gameState.islands[0].name}. Your story begins here.`,
+      type: 'chapter',
+      detail: 'Nurture life, build settlements, and shape this island into a legend.',
     });
-  }, 1500);
+  }, 1200);
 }
 
 function boot() {
