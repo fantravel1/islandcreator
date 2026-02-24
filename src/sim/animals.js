@@ -58,8 +58,10 @@ class SpatialHash {
     cell.push(animal);
   }
 
-  query(x, y, radius) {
-    const results = [];
+  query(x, y, radius, out) {
+    if (!out) out = [];
+    out.length = 0;
+    const r2 = radius * radius;
     const cx1 = ((x - radius) / this.cellSize) | 0;
     const cy1 = ((y - radius) / this.cellSize) | 0;
     const cx2 = ((x + radius) / this.cellSize) | 0;
@@ -73,17 +75,23 @@ class SpatialHash {
           const a = cell[i];
           const dx = a.x - x;
           const dy = a.y - y;
-          if (dx * dx + dy * dy <= radius * radius) {
-            results.push(a);
+          if (dx * dx + dy * dy <= r2) {
+            out.push(a);
           }
         }
       }
     }
-    return results;
+    return out;
   }
 }
 
 const hash = new SpatialHash();
+
+// Reusable query buffers to avoid per-frame allocations
+const _nearbyBuf = [];
+const _sameSpeciesBuf = [];
+const _threatBuf = [];
+const _predNearbyBuf = [];
 
 // Flocking constants
 const FLOCK_SEPARATION_DIST = 1.5;
@@ -91,22 +99,29 @@ const FLOCK_ALIGNMENT_WEIGHT = 0.3;
 const FLOCK_COHESION_WEIGHT = 0.2;
 const FLOCK_SEPARATION_WEIGHT = 0.5;
 
+const _flockResult = { fx: 0, fy: 0 };
+const FLOCK_SEP_DIST_SQ = FLOCK_SEPARATION_DIST * FLOCK_SEPARATION_DIST;
+
 function _computeFlocking(a, sameSpecies) {
-  if (sameSpecies.length <= 1) return { fx: 0, fy: 0 };
+  _flockResult.fx = 0;
+  _flockResult.fy = 0;
+  if (sameSpecies.length <= 1) return _flockResult;
 
   let sepX = 0, sepY = 0;
   let alignX = 0, alignY = 0;
   let cohX = 0, cohY = 0;
   let count = 0;
 
-  for (const other of sameSpecies) {
+  for (let j = 0; j < sameSpecies.length; j++) {
+    const other = sameSpecies[j];
     if (other.id === a.id) continue;
     const dx = a.x - other.x;
     const dy = a.y - other.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
+    const d2 = dx * dx + dy * dy;
 
     // Separation: steer away from very close neighbors
-    if (dist < FLOCK_SEPARATION_DIST && dist > 0.01) {
+    if (d2 < FLOCK_SEP_DIST_SQ && d2 > 0.0001) {
+      const dist = Math.sqrt(d2);
       sepX += (dx / dist) / dist;
       sepY += (dy / dist) / dist;
     }
@@ -121,17 +136,16 @@ function _computeFlocking(a, sameSpecies) {
     count++;
   }
 
-  if (count === 0) return { fx: 0, fy: 0 };
+  if (count === 0) return _flockResult;
 
   alignX /= count;
   alignY /= count;
   cohX = cohX / count - a.x;
   cohY = cohY / count - a.y;
 
-  return {
-    fx: sepX * FLOCK_SEPARATION_WEIGHT + alignX * FLOCK_ALIGNMENT_WEIGHT + cohX * FLOCK_COHESION_WEIGHT,
-    fy: sepY * FLOCK_SEPARATION_WEIGHT + alignY * FLOCK_ALIGNMENT_WEIGHT + cohY * FLOCK_COHESION_WEIGHT,
-  };
+  _flockResult.fx = sepX * FLOCK_SEPARATION_WEIGHT + alignX * FLOCK_ALIGNMENT_WEIGHT + cohX * FLOCK_COHESION_WEIGHT;
+  _flockResult.fy = sepY * FLOCK_SEPARATION_WEIGHT + alignY * FLOCK_ALIGNMENT_WEIGHT + cohY * FLOCK_COHESION_WEIGHT;
+  return _flockResult;
 }
 
 export function simulateAnimals(animals, tiles, governance, tick) {
@@ -141,8 +155,9 @@ export function simulateAnimals(animals, tiles, governance, tick) {
     hash.insert(animals[i]);
   }
 
-  const toRemove = [];
   const toAdd = [];
+  const ageFrame = tick % 100 === 0;
+  let removeCount = 0;
 
   for (let i = 0; i < animals.length; i++) {
     const a = animals[i];
@@ -150,7 +165,7 @@ export function simulateAnimals(animals, tiles, governance, tick) {
     if (!spec) continue;
 
     // Age
-    if (tick % 100 === 0) a.ageDays++;
+    if (ageFrame) a.ageDays++;
 
     // Hunger and thirst increase
     a.hunger = Math.min(1, a.hunger + spec.hungerRate);
@@ -162,35 +177,39 @@ export function simulateAnimals(animals, tiles, governance, tick) {
 
     // Death conditions
     if (a.energy <= 0 || a.ageDays > spec.maxAge) {
-      toRemove.push(i);
-      // Emit death cause so players understand what happened
+      a._dead = true;
+      removeCount++;
       _reportDeath(a, spec, tick);
       continue;
     }
 
     // Decision making
-    const tx = Math.floor(a.x);
-    const ty = Math.floor(a.y);
+    const tx = (a.x | 0);
+    const ty = (a.y | 0);
     const inProtected = tiles.inBounds(tx, ty) && tiles.isProtected(tx, ty);
     const huntingAllowed = !inProtected || governance.enforcement < 0.5;
 
-    // Get nearby same-species for flocking
-    const nearby = hash.query(a.x, a.y, 5);
-    const sameSpecies = nearby.filter(o => o.speciesId === a.speciesId);
+    // Get nearby and build same-species list inline (avoids .filter allocation)
+    const nearby = hash.query(a.x, a.y, 5, _nearbyBuf);
+    _sameSpeciesBuf.length = 0;
+    const sid = a.speciesId;
+    for (let j = 0; j < nearby.length; j++) {
+      if (nearby[j].speciesId === sid) _sameSpeciesBuf.push(nearby[j]);
+    }
 
     if (spec.type === 'herbivore') {
-      _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, sameSpecies);
+      _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, _sameSpeciesBuf);
     } else {
-      _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove, sameSpecies);
+      _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, _sameSpeciesBuf);
     }
 
     // Reproduction
     if (a.energy > spec.reproductionThreshold && a.cooldown <= 0 && animals.length + toAdd.length < MAX_ANIMALS) {
-      const mate = sameSpecies.find(o =>
-        o.id !== a.id &&
-        o.sex !== a.sex &&
-        o.energy > 0.4
-      );
+      let mate = null;
+      for (let j = 0; j < _sameSpeciesBuf.length; j++) {
+        const o = _sameSpeciesBuf[j];
+        if (o.id !== a.id && o.sex !== a.sex && o.energy > 0.4) { mate = o; break; }
+      }
       if (mate) {
         const baby = createAnimal(
           a.speciesId,
@@ -212,31 +231,37 @@ export function simulateAnimals(animals, tiles, governance, tick) {
     a.y = Math.max(0, Math.min(GRID_H - 1, a.y));
   }
 
-  // Remove dead (iterate backward)
-  const removeSet = new Set(toRemove);
-  for (let i = animals.length - 1; i >= 0; i--) {
-    if (removeSet.has(i)) {
-      animals.splice(i, 1);
+  // Remove dead animals with swap-and-pop (O(n) instead of O(n^2) splice)
+  if (removeCount > 0) {
+    let write = 0;
+    for (let read = 0; read < animals.length; read++) {
+      if (!animals[read]._dead) {
+        if (write !== read) animals[write] = animals[read];
+        write++;
+      }
     }
+    animals.length = write;
   }
 
   // Add newborns
-  for (const baby of toAdd) {
-    animals.push(baby);
+  for (let i = 0; i < toAdd.length; i++) {
+    animals.push(toAdd[i]);
   }
 }
 
 function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, sameSpecies) {
   // Check fear (nearby predators)
   a.fear = 0;
-  const nearbyThreats = hash.query(a.x, a.y, spec.sightRange);
-  for (const other of nearbyThreats) {
+  const nearbyThreats = hash.query(a.x, a.y, spec.sightRange, _threatBuf);
+  const sightRangeSq = spec.sightRange * spec.sightRange;
+  for (let j = 0; j < nearbyThreats.length; j++) {
+    const other = nearbyThreats[j];
     const otherSpec = SPECIES[other.speciesId];
     if (otherSpec && otherSpec.type === 'predator' && otherSpec.prey?.includes(a.speciesId)) {
       const dx = other.x - a.x;
       const dy = other.y - a.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      a.fear = Math.max(a.fear, 1 - dist / spec.sightRange);
+      const d2 = dx * dx + dy * dy;
+      a.fear = Math.max(a.fear, 1 - Math.sqrt(d2) / spec.sightRange);
     }
   }
 
@@ -263,7 +288,8 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, same
     case 'flee': {
       // Run away from nearest predator
       let fleeX = 0, fleeY = 0;
-      for (const other of nearbyThreats) {
+      for (let j = 0; j < nearbyThreats.length; j++) {
+        const other = nearbyThreats[j];
         const otherSpec = SPECIES[other.speciesId];
         if (otherSpec?.type === 'predator') {
           fleeX += a.x - other.x;
@@ -369,7 +395,7 @@ function _updateHerbivore(a, spec, tiles, governance, hash, huntingAllowed, same
   _stayOnLand(a, tiles);
 }
 
-function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove, sameSpecies) {
+function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, sameSpecies) {
   if (a.hunger > 0.5 && huntingAllowed) {
     a.state = 'seekFood';
   } else if (a.thirst > 0.6) {
@@ -387,10 +413,11 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
 
   switch (a.state) {
     case 'seekFood': {
-      const nearby = hash.query(a.x, a.y, spec.sightRange);
+      const nearby = hash.query(a.x, a.y, spec.sightRange, _predNearbyBuf);
       let closestPrey = null;
       let closestDist = Infinity;
-      for (const other of nearby) {
+      for (let j = 0; j < nearby.length; j++) {
+        const other = nearby[j];
         if (spec.prey?.includes(other.speciesId)) {
           const dx = other.x - a.x;
           const dy = other.y - a.y;
@@ -408,16 +435,13 @@ function _updatePredator(a, spec, tiles, animals, hash, huntingAllowed, toRemove
         moveX = (pdx / pdist) * spec.speed;
         moveY = (pdy / pdist) * spec.speed;
         // Catch prey
-        if (closestDist < 1) {
-          const idx = animals.indexOf(closestPrey);
-          if (idx >= 0) {
-            toRemove.push(idx);
-            a.hunger = Math.max(0, a.hunger - 0.5);
-            a.energy = Math.min(1, a.energy + spec.energyFromFood);
-            bus.emit('animalKill', { predatorId: a.id, preyId: closestPrey.id });
-            const preySpec = SPECIES[closestPrey.speciesId];
-            if (preySpec) _reportPredation(closestPrey, preySpec, a, spec);
-          }
+        if (closestDist < 1 && !closestPrey._dead) {
+          closestPrey._dead = true;
+          a.hunger = Math.max(0, a.hunger - 0.5);
+          a.energy = Math.min(1, a.energy + spec.energyFromFood);
+          bus.emit('animalKill', { predatorId: a.id, preyId: closestPrey.id });
+          const preySpec = SPECIES[closestPrey.speciesId];
+          if (preySpec) _reportPredation(closestPrey, preySpec, a, spec);
         }
       } else {
         moveX = (_rng() - 0.5) * spec.speed;

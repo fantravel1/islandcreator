@@ -51,15 +51,15 @@ export function simulateVegetation(tiles, governance, chunkStart, chunkEnd) {
       veg -= (0.15 - temp) * 0.01;
     }
 
-    // Spread from neighbors (slow)
+    // Spread from neighbors (slow) — inlined to avoid array allocation
     if (veg < 0.1) {
-      const neighbors = tiles.neighbors4(x, y);
       let neighborVeg = 0;
-      for (let n = 0; n < neighbors.length; n++) {
-        neighborVeg += tiles.getVeg(neighbors[n][0], neighbors[n][1]);
-      }
-      neighborVeg /= neighbors.length;
-      if (neighborVeg > 0.3) {
+      let nCount = 0;
+      if (x > 0)         { neighborVeg += tiles.getVeg(x - 1, y); nCount++; }
+      if (x < w - 1)     { neighborVeg += tiles.getVeg(x + 1, y); nCount++; }
+      if (y > 0)          { neighborVeg += tiles.getVeg(x, y - 1); nCount++; }
+      if (y < tiles.h - 1){ neighborVeg += tiles.getVeg(x, y + 1); nCount++; }
+      if (nCount > 0 && neighborVeg / nCount > 0.3) {
         veg += 0.002;
       }
     }
