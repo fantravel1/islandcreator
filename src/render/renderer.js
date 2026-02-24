@@ -1,11 +1,21 @@
 import { BIOME_DATA } from '../world/biomes.js';
 import { BIOME_OCEAN } from '../data/constants.js';
 import { SPECIES } from '../data/species.js';
+import { overlayTileColor, OVERLAY_NONE } from '../ui/overlaymodes.js';
+import { STRUCTURE_TYPES } from '../sim/structures.js';
 
 const _rgb = [0, 0, 0];
 let _frameTime = 0;
 
-function tileColor(tiles, x, y, time) {
+// Season color tints
+const SEASON_TINTS = [
+  { r: 5, g: 15, b: -5 },    // Spring: slight green boost
+  { r: 10, g: 5, b: -10 },   // Summer: warm golden
+  { r: 20, g: -5, b: -15 },  // Fall: warm reds/oranges
+  { r: -10, g: -5, b: 15 },  // Winter: cool blue
+];
+
+function tileColor(tiles, x, y, time, season) {
   const biome = tiles.getBiome(x, y);
   const h = tiles.getH(x, y);
   const veg = tiles.getVeg(x, y);
@@ -74,6 +84,28 @@ function tileColor(tiles, x, y, time) {
       _rgb[1] = _rgb[1] + (245 - _rgb[1]) * snowFactor;
       _rgb[2] = _rgb[2] + (250 - _rgb[2]) * snowFactor;
     }
+
+    // Seasonal tinting
+    if (season !== undefined && season >= 0 && season <= 3) {
+      const tint = SEASON_TINTS[season];
+      // Fall: desaturate greens, boost oranges on vegetation tiles
+      if (season === 2 && veg > 0.1) {
+        const fallAmt = veg * 0.6;
+        _rgb[0] += fallAmt * 40;
+        _rgb[1] -= fallAmt * 15;
+        _rgb[2] -= fallAmt * 10;
+      }
+      // Winter: lighten slightly (frost)
+      if (season === 3 && h > 0.4) {
+        const frost = (h - 0.4) * 0.15;
+        _rgb[0] += frost * 40;
+        _rgb[1] += frost * 45;
+        _rgb[2] += frost * 55;
+      }
+      _rgb[0] += tint.r;
+      _rgb[1] += tint.g;
+      _rgb[2] += tint.b;
+    }
   }
 
   // Day/night tinting
@@ -115,6 +147,9 @@ export class Renderer {
     this.ctx = canvas.getContext('2d');
     this.camera = camera;
     this.dirty = true;
+    this.overlayMode = OVERLAY_NONE;
+    this.showGridLines = true;
+    this.showDayNight = true;
   }
 
   markDirty() {
@@ -140,18 +175,29 @@ export class Renderer {
     const tiles = island.world.tiles;
     const offsetX = cw / 2 - cam.x * ts;
     const offsetY = ch / 2 - cam.y * ts;
-    const time = gameState.time;
+    const time = this.showDayNight ? gameState.time : null;
+    const season = gameState.time?.season;
+    const oMode = this.overlayMode;
+    const oRgb = [0, 0, 0];
 
     // Draw tiles
     for (let y = range.y1; y <= range.y2; y++) {
       for (let x = range.x1; x <= range.x2; x++) {
-        const rgb = tileColor(tiles, x, y, time);
+        let r, g, b;
+
+        if (oMode !== OVERLAY_NONE && overlayTileColor(tiles, x, y, oMode, oRgb)) {
+          r = oRgb[0]; g = oRgb[1]; b = oRgb[2];
+        } else {
+          const rgb = tileColor(tiles, x, y, time, season);
+          r = rgb[0]; g = rgb[1]; b = rgb[2];
+        }
+
         const sx = (x * ts + offsetX) | 0;
         const sy = (y * ts + offsetY) | 0;
         const sw = (ts + 1) | 0;
         const sh = (ts + 1) | 0;
 
-        ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.fillRect(sx, sy, sw, sh);
 
         // Protected zone overlay
@@ -188,8 +234,37 @@ export class Renderer {
       }
     }
 
+    // Structures
+    const structures = island.entities.structures;
+    if (structures && ts > 6) {
+      for (const s of structures) {
+        const type = STRUCTURE_TYPES[s.typeId];
+        if (!type) continue;
+        const sx = (s.x * ts + offsetX) | 0;
+        const sy = (s.y * ts + offsetY) | 0;
+        if (sx < -ts * 4 || sx > cw + ts * 4 || sy < -ts * 4 || sy > ch + ts * 4) continue;
+        const sz = type.size * ts;
+
+        if (ts > 15) {
+          // Show emoji at high zoom
+          ctx.font = `${sz * 0.7}px serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(type.emoji, sx + ts * 0.5, sy + ts * 0.5);
+        } else {
+          // Simple colored marker at low zoom
+          ctx.fillStyle = 'rgba(200, 160, 80, 0.6)';
+          const r = Math.floor(type.size / 2);
+          ctx.fillRect(sx - r * ts, sy - r * ts, sz, sz);
+          ctx.strokeStyle = 'rgba(255, 220, 120, 0.5)';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(sx - r * ts, sy - r * ts, sz, sz);
+        }
+      }
+    }
+
     // Grid lines at high zoom
-    if (ts > 14) {
+    if (this.showGridLines && ts > 14) {
       ctx.strokeStyle = 'rgba(255,255,255,0.06)';
       ctx.lineWidth = 0.5;
       for (let y = range.y1; y <= range.y2 + 1; y++) {

@@ -4,15 +4,18 @@ import { HUD } from './hud.js';
 import { Inspector } from './inspector.js';
 import {
   TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
+  TOOL_BUILD,
   BRUSH_RADIUS, SCULPT_STRENGTH,
 } from '../data/constants.js';
 import { createAnimal } from '../sim/animals.js';
+import { placeStructure, canPlaceStructure } from '../sim/structures.js';
 
 export class UI {
-  constructor(uiContainer, gameState, overlays, zoneManager) {
+  constructor(uiContainer, gameState, overlays, zoneManager, undoManager) {
     this.gameState = gameState;
     this.overlays = overlays;
     this.zoneManager = zoneManager;
+    this.undoManager = undoManager;
 
     this.toolbar = new Toolbar(uiContainer);
     this.hud = new HUD(uiContainer);
@@ -67,6 +70,49 @@ export class UI {
     bus.on('dragEnd', () => this._onDragEnd());
     bus.on('pinch', (e) => this._onPinch(e));
     bus.on('pan', (e) => this._onPan(e));
+
+    // Radial menu action
+    bus.on('radialAction', ({ action, worldX, worldY }) => {
+      this._handleRadialAction(action, worldX, worldY);
+    });
+
+    // Undo keyboard shortcut
+    document.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        e.preventDefault();
+        this._performUndo();
+      }
+    });
+  }
+
+  _handleRadialAction(action, worldX, worldY) {
+    const toolMap = {
+      'inspect': TOOL_INSPECT,
+      'sculpt': TOOL_SCULPT,
+      'biome': TOOL_BIOME,
+      'animal': TOOL_ANIMAL,
+      'zone': TOOL_ZONE,
+    };
+    const tool = toolMap[action];
+    if (tool) {
+      this.toolbar.setTool(tool);
+    }
+  }
+
+  _performUndo() {
+    if (this.undoManager && this.undoManager.canUndo()) {
+      const tiles = this.gameState.islands[0]?.world.tiles;
+      if (tiles) {
+        this.undoManager.undo(tiles);
+        this.gameState._dirty = true;
+        if (navigator.vibrate) navigator.vibrate([10, 20, 10]);
+        bus.emit('notification', {
+          message: 'Undo successful',
+          type: 'info',
+          icon: '↩️',
+        });
+      }
+    }
   }
 
   _onTap(e) {
@@ -80,7 +126,6 @@ export class UI {
     if (!tiles.inBounds(tx, ty)) return;
 
     if (tool === TOOL_INSPECT) {
-      // Check for animal near tap
       const animals = this.gameState.islands[0].entities.animals;
       let closest = null;
       let closestDist = 4;
@@ -104,17 +149,39 @@ export class UI {
         if (animal) {
           this.gameState.islands[0].entities.animals.push(animal);
           this.gameState._dirty = true;
-          // Haptic feedback
           if (navigator.vibrate) navigator.vibrate(20);
         }
+      }
+    } else if (tool === TOOL_BUILD) {
+      const structType = this.toolbar.selectedStructure;
+      const structures = this.gameState.islands[0].entities.structures;
+      if (canPlaceStructure(structType, tiles, tx, ty)) {
+        placeStructure(structType, tiles, tx, ty, structures);
+        this.gameState._dirty = true;
+        if (navigator.vibrate) navigator.vibrate([15, 30, 15]);
+        bus.emit('sculptApplied'); // for achievement tracking
+      } else {
+        bus.emit('notification', {
+          message: 'Cannot build here. Need open, undeveloped land.',
+          type: 'warning',
+          icon: '⚠️',
+        });
+        if (navigator.vibrate) navigator.vibrate([50, 30, 50]);
       }
     } else if (tool === TOOL_ZONE) {
       this.zoneManager.toggleTile(tx, ty);
       this.gameState._dirty = true;
       if (navigator.vibrate) navigator.vibrate(15);
     } else if (tool === TOOL_SCULPT) {
+      if (this.undoManager) {
+        this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
+      }
       this._applySculpt(tiles, tx, ty);
+      bus.emit('sculptApplied');
     } else if (tool === TOOL_BIOME) {
+      if (this.undoManager) {
+        this.undoManager.pushSnapshot(tiles, tx, ty, BRUSH_RADIUS);
+      }
       this._applyBiome(tiles, tx, ty);
     }
   }
@@ -134,7 +201,6 @@ export class UI {
     } else if (tool === TOOL_BIOME) {
       this._applyBiome(tiles, tx, ty);
     } else if (tool === TOOL_INSPECT) {
-      // Single-finger pan when no tool active
       const cam = this.gameState._camera;
       if (cam) cam.pan(e.dx, e.dy);
     } else if (tool === TOOL_ZONE) {

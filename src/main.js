@@ -1,6 +1,7 @@
 import { GameLoop } from './engine/gameLoop.js';
 import { InputManager } from './engine/input.js';
 import { Scheduler } from './engine/scheduler.js';
+import { UndoManager } from './engine/undo.js';
 import { bus } from './engine/events.js';
 import { Camera } from './render/camera.js';
 import { Renderer } from './render/renderer.js';
@@ -8,15 +9,23 @@ import { OverlayRenderer } from './render/overlays.js';
 import { ParticleSystem } from './render/particles.js';
 import { generateIsland } from './world/terrainGen.js';
 import { ZoneManager } from './world/zones.js';
-import { simTick } from './sim/simTick.js';
+import { simTick, setWeatherSystem } from './sim/simTick.js';
 import { computeStats } from './sim/stats.js';
 import { createGovernanceState } from './sim/governance.js';
+import { checkCollapseRisks } from './sim/collapse.js';
+import { computeEcoScore, getEcoRating } from './sim/ecoscore.js';
+import { WeatherSystem } from './sim/weather.js';
 import { UI } from './ui/ui.js';
 import { TitleScreen } from './ui/titlescreen.js';
 import { MiniMap } from './ui/minimap.js';
 import { PopulationGraph } from './ui/popgraph.js';
 import { NotificationSystem } from './ui/notifications.js';
 import { Tutorial } from './ui/tutorial.js';
+import { RadialMenu } from './ui/radialmenu.js';
+import { OverlayModePanel } from './ui/overlaymodes.js';
+import { SettingsPanel } from './ui/settings.js';
+import { AchievementSystem } from './ui/achievements.js';
+import { PhotoMode } from './ui/photomode.js';
 import { AmbientAudio } from './audio/ambient.js';
 import { saveGame } from './storage/save.js';
 import { loadGame, hasSave } from './storage/load.js';
@@ -26,18 +35,18 @@ import { GRID_W, GRID_H, AUTOSAVE_INTERVAL } from './data/constants.js';
 import { SPECIES_LIST } from './data/species.js';
 import { createRng } from './engine/rng.js';
 
-function createNewGameState(seed) {
+function createNewGameState(seed, islandName) {
   const tiles = generateIsland(seed);
   const zoneManager = new ZoneManager(tiles);
 
   const gameState = {
     meta: { version: 1, seed, createdAt: Date.now(), lastSavedAt: null },
-    settings: { sound: false, haptics: true, simSpeed: 1 },
+    settings: { sound: false, haptics: true, simSpeed: 1, particles: true, gridLines: true, dayNight: true, quality: 'high' },
     time: { day: 0, season: 0, year: 0, tick: 0 },
     governance: createGovernanceState(),
     islands: [{
       id: 'island_001',
-      name: 'My Island',
+      name: islandName || 'My Island',
       size: { w: GRID_W, h: GRID_H },
       world: { tiles },
       entities: { animals: [], structures: [] },
@@ -47,7 +56,7 @@ function createNewGameState(seed) {
         landTiles: 0, protectedTiles: 0, developedTiles: 0,
       },
     }],
-    flags: { tutorialDone: false },
+    flags: { tutorialDone: false, achievements: [], achievementCounters: {} },
     _dirty: false,
     _camera: null,
     _gameLoop: null,
@@ -91,13 +100,18 @@ function restoreGameState(saveData) {
   const zoneManager = new ZoneManager(tiles);
   if (data.zones) zoneManager.loadJSON(data.zones);
 
+  // Ensure entities.structures exists for older saves
+  if (!data.islands[0].entities.structures) {
+    data.islands[0].entities.structures = [];
+  }
+
   return {
     meta: data.meta,
-    settings: data.settings || { sound: false, haptics: true, simSpeed: 1 },
+    settings: data.settings || { sound: false, haptics: true, simSpeed: 1, particles: true, gridLines: true, dayNight: true, quality: 'high' },
     time: data.time,
     governance: data.governance,
     islands: data.islands,
-    flags: data.flags || { tutorialDone: false },
+    flags: data.flags || { tutorialDone: false, achievements: [], achievementCounters: {} },
     _dirty: false,
     _camera: null,
     _gameLoop: null,
@@ -127,12 +141,81 @@ function startGame(gameState) {
   const overlays = new OverlayRenderer(camera);
   const particles = new ParticleSystem();
 
+  renderer.showGridLines = gameState.settings.gridLines !== false;
+  renderer.showDayNight = gameState.settings.dayNight !== false;
+
   // Input
   const input = new InputManager(canvas, camera);
 
+  // Undo manager
+  const undoManager = new UndoManager();
+
+  // Weather system
+  const weatherSystem = new WeatherSystem();
+  setWeatherSystem(weatherSystem);
+
   // UI
   const zoneManager = gameState._zoneManager;
-  const ui = new UI(uiContainer, gameState, overlays, zoneManager);
+  const ui = new UI(uiContainer, gameState, overlays, zoneManager, undoManager);
+
+  // Set island name in HUD
+  ui.hud.setIslandName(gameState.islands[0].name);
+
+  // Radial context menu
+  const radialMenu = new RadialMenu(uiContainer);
+
+  // Overlay modes panel
+  const overlayPanel = new OverlayModePanel(uiContainer);
+  bus.on('overlayModeChanged', ({ mode }) => {
+    renderer.overlayMode = mode;
+  });
+
+  // Settings panel
+  const settingsPanel = new SettingsPanel(uiContainer);
+  settingsPanel.setGameState(gameState);
+
+  // Achievements
+  const achievements = new AchievementSystem(uiContainer);
+  achievements.loadState(gameState.flags);
+
+  // Photo mode
+  const photoMode = new PhotoMode(uiContainer, canvas);
+
+  // Settings gear button
+  const gearBtn = document.createElement('button');
+  gearBtn.className = 'stat-item settings-gear';
+  gearBtn.textContent = '⚙️';
+  gearBtn.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    settingsPanel.toggle();
+  });
+
+  // Undo button
+  const undoBtn = document.createElement('button');
+  undoBtn.className = 'stat-item undo-btn';
+  undoBtn.textContent = '↩️';
+  undoBtn.addEventListener('pointerdown', (e) => {
+    e.stopPropagation();
+    if (undoManager.canUndo()) {
+      const tiles = gameState.islands[0]?.world.tiles;
+      if (tiles) {
+        undoManager.undo(tiles);
+        gameState._dirty = true;
+        if (navigator.vibrate) navigator.vibrate([10, 20, 10]);
+      }
+    }
+  });
+
+  // Ecosystem score display
+  const ecoScoreEl = document.createElement('div');
+  ecoScoreEl.className = 'stat-item eco-score';
+  ecoScoreEl.textContent = '-- ';
+
+  // Listen for settings changes
+  bus.on('settingsChanged', ({ key, value }) => {
+    if (key === 'gridLines') renderer.showGridLines = value;
+    if (key === 'dayNight') renderer.showDayNight = value;
+  });
 
   // Mini-map
   const minimap = new MiniMap(uiContainer, camera);
@@ -147,7 +230,7 @@ function startGame(gameState) {
   // Audio
   const audio = new AmbientAudio();
 
-  // Sound toggle button in HUD stats
+  // Sound toggle
   const soundBtn = document.createElement('button');
   soundBtn.className = 'stat-item sound-toggle';
   soundBtn.textContent = '🔇';
@@ -158,12 +241,16 @@ function startGame(gameState) {
     gameState.settings.sound = on;
   });
 
-  // Add graph toggle + sound button to HUD
+  // Add HUD extras
   setTimeout(() => {
     const statsEl = uiContainer.querySelector('.hud-stats');
     if (statsEl) {
+      statsEl.appendChild(ecoScoreEl);
+      statsEl.appendChild(undoBtn);
+      statsEl.appendChild(photoMode.btn);
       statsEl.appendChild(popGraph.toggleBtn);
       statsEl.appendChild(soundBtn);
+      statsEl.appendChild(gearBtn);
     }
   }, 100);
 
@@ -180,11 +267,28 @@ function startGame(gameState) {
   // Scheduler
   const scheduler = new Scheduler();
   scheduler.add('autosave', AUTOSAVE_INTERVAL, () => {
-    if (gameState._dirty) saveGame(gameState);
+    if (gameState._dirty) {
+      achievements.saveState(gameState.flags);
+      saveGame(gameState);
+    }
   });
-  scheduler.add('uiUpdate', 500, () => ui.update());
+  scheduler.add('uiUpdate', 500, () => {
+    ui.update();
+    ui.hud.setWeather(weatherSystem.current);
+  });
   scheduler.add('minimap', 2000, (now) => minimap.update(now));
   scheduler.add('audio', 5000, () => audio.setSeason(gameState.time.season));
+  scheduler.add('collapse', 8000, () => checkCollapseRisks(gameState));
+  scheduler.add('ecoscore', 4000, () => {
+    const score = computeEcoScore(gameState);
+    const rating = getEcoRating(score);
+    ecoScoreEl.innerHTML = `<span style="color:${rating.color};font-weight:700">${rating.grade}</span> ${score}`;
+    ecoScoreEl.title = rating.label;
+    achievements.setEcoScore(score);
+  });
+  scheduler.add('achievements', 5000, () => {
+    achievements.check(gameState);
+  });
 
   // Initial stats
   computeStats(gameState.islands[0]);
@@ -195,9 +299,13 @@ function startGame(gameState) {
     (dt) => {
       const now = performance.now();
       scheduler.update(now);
-      particles.update(gameState.time.season, canvas.width, canvas.height);
+      if (gameState.settings.particles !== false) {
+        particles.update(gameState.time.season, canvas.width, canvas.height);
+      }
       renderer.render(gameState, now);
-      particles.render(renderer.ctx);
+      if (gameState.settings.particles !== false) {
+        particles.render(renderer.ctx);
+      }
       overlays.render(renderer.ctx);
     }
   );
@@ -208,7 +316,10 @@ function startGame(gameState) {
 
   // Save on blur
   document.addEventListener('visibilitychange', () => {
-    if (document.hidden && gameState._dirty) saveGame(gameState);
+    if (document.hidden && gameState._dirty) {
+      achievements.saveState(gameState.flags);
+      saveGame(gameState);
+    }
   });
 
   // Start
@@ -217,7 +328,7 @@ function startGame(gameState) {
   // Initial notification
   setTimeout(() => {
     bus.emit('notification', {
-      message: 'Island generated! Explore and shape your ecosystem.',
+      message: `Welcome to ${gameState.islands[0].name}! Explore and shape your ecosystem.`,
       type: 'info',
       icon: '🏝️',
     });
@@ -229,7 +340,6 @@ function boot() {
   const uiContainer = document.getElementById('ui-container');
   if (!canvas || !uiContainer) return;
 
-  // Resize canvas to fill screen
   const cam = { resize() {
     const dpr = window.devicePixelRatio || 1;
     canvas.width = canvas.clientWidth * dpr;
@@ -238,7 +348,6 @@ function boot() {
   cam.resize();
   window.addEventListener('resize', cam.resize);
 
-  // Show title screen
   const loading = document.getElementById('loading');
   if (loading) {
     loading.style.opacity = '0';
@@ -247,7 +356,7 @@ function boot() {
 
   const titleScreen = new TitleScreen(uiContainer);
 
-  bus.on('titleAction', ({ action }) => {
+  bus.on('titleAction', ({ action, name, seed: customSeed }) => {
     let gameState;
 
     if (action === 'continue') {
@@ -258,8 +367,8 @@ function boot() {
     }
 
     if (!gameState) {
-      const seed = (Math.random() * 999999) | 0;
-      gameState = createNewGameState(seed);
+      const seed = customSeed ?? ((Math.random() * 999999) | 0);
+      gameState = createNewGameState(seed, name);
     }
 
     startGame(gameState);

@@ -6,8 +6,15 @@ import { simulateVegetation } from './vegetation.js';
 import { simulateAnimals } from './animals.js';
 import { applyGovernance } from './governance.js';
 import { computeStats } from './stats.js';
+import { simulateStructures } from './structures.js';
+import { checkRandomEvents } from './events.js';
 
 let _tickCount = 0;
+let _weatherSystem = null;
+
+export function setWeatherSystem(ws) {
+  _weatherSystem = ws;
+}
 
 export function simTick(gameState) {
   const island = gameState.islands[0];
@@ -16,6 +23,7 @@ export function simTick(gameState) {
   _tickCount++;
   const tiles = island.world.tiles;
   const animals = island.entities.animals;
+  const structures = island.entities.structures;
   const governance = gameState.governance;
   const time = gameState.time;
 
@@ -40,15 +48,29 @@ export function simTick(gameState) {
   const chunkEnd = Math.min(chunkStart + chunkSize, GRID_SIZE);
 
   applyClimate(tiles, time.season, chunkStart, chunkEnd);
+
+  // Weather system
+  if (_weatherSystem) {
+    _weatherSystem.update(time.season, tiles, chunkStart, chunkEnd);
+  }
+
   simulateWater(tiles, chunkStart, chunkEnd);
   simulateSoil(tiles, governance, chunkStart, chunkEnd);
   simulateVegetation(tiles, governance, chunkStart, chunkEnd);
   applyGovernance(tiles, governance, chunkStart, chunkEnd);
 
-  // Animals run every tick (usually <200 entities)
+  // Structures every 10 ticks
+  if (_tickCount % 10 === 0 && structures) {
+    simulateStructures(structures, tiles);
+  }
+
+  // Animals run every tick
   simulateAnimals(animals, tiles, governance, _tickCount);
 
-  // Stats computed less frequently (every 50 ticks = 5 seconds)
+  // Random events every ~50 seconds of sim time
+  checkRandomEvents(gameState, _tickCount);
+
+  // Stats computed less frequently
   if (_tickCount % 50 === 0) {
     computeStats(island);
   }
