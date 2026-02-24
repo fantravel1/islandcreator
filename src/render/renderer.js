@@ -5,7 +5,10 @@ import { overlayTileColor, OVERLAY_NONE } from '../ui/overlaymodes.js';
 import { STRUCTURE_TYPES } from '../sim/structures.js';
 
 const _rgb = [0, 0, 0];
+const _oRgb = [0, 0, 0]; // reusable overlay color buffer
 let _frameTime = 0;
+const TWO_PI = Math.PI * 2;
+const HALF_PI = Math.PI / 2;
 
 // Season color tints
 const SEASON_TINTS = [
@@ -197,7 +200,7 @@ export class Renderer {
     const time = this.showDayNight ? gameState.time : null;
     const season = gameState.time?.season;
     const oMode = this.overlayMode;
-    const oRgb = [0, 0, 0];
+    const oRgb = _oRgb;
 
     // --- Fast tile rendering via ImageData buffer ---
     const tw = range.x2 - range.x1 + 1;
@@ -395,8 +398,13 @@ export class Renderer {
       }
     }
 
-    // Animal shadows
+    // Animals (single pass: shadow + body + decorations)
     const animals = island.entities.animals;
+    const showEnergyRing = ts > 5;
+    const showStateIcon = ts > 10 && ts <= 20;
+    const showEmoji = ts > 20;
+    const tsDiv10 = ts / 10;
+
     for (let i = 0; i < animals.length; i++) {
       const a = animals[i];
       const spec = SPECIES[a.speciesId];
@@ -404,61 +412,53 @@ export class Renderer {
       const ax = a.x * ts + offsetX;
       const ay = a.y * ts + offsetY;
       if (ax < -20 || ax > cw + 20 || ay < -20 || ay > ch + 20) continue;
-      const size = Math.max(3, spec.size * (ts / 10));
+
+      const size = Math.max(3, spec.size * tsDiv10);
+
+      // Shadow
       ctx.fillStyle = 'rgba(0,0,0,0.2)';
       ctx.beginPath();
-      ctx.ellipse(ax + 1, ay + 2, size, size * 0.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(ax + 1, ay + 2, size, size * 0.5, 0, 0, TWO_PI);
       ctx.fill();
-    }
-
-    // Animals
-    for (let i = 0; i < animals.length; i++) {
-      const a = animals[i];
-      const spec = SPECIES[a.speciesId];
-      if (!spec) continue;
-      const ax = a.x * ts + offsetX;
-      const ay = a.y * ts + offsetY;
-      if (ax < -20 || ax > cw + 20 || ay < -20 || ay > ch + 20) continue;
-
-      const size = Math.max(3, spec.size * (ts / 10));
 
       // Bobbing animation
       let bobY = 0;
-      if (a.state === 'wander' || a.state === 'seekFood' || a.state === 'seekWater') {
+      const st = a.state;
+      if (st === 'wander' || st === 'seekFood' || st === 'seekWater') {
         bobY = Math.sin(_frameTime * 0.005 + a.id) * size * 0.2;
-      } else if (a.state === 'flee') {
+      } else if (st === 'flee') {
         bobY = Math.sin(_frameTime * 0.015 + a.id) * size * 0.3;
       }
 
       // Body
       ctx.fillStyle = spec.color;
       ctx.beginPath();
-      ctx.arc(ax, ay + bobY, size, 0, Math.PI * 2);
+      ctx.arc(ax, ay + bobY, size, 0, TWO_PI);
       ctx.fill();
 
       // Energy ring
-      if (ts > 5) {
+      if (showEnergyRing) {
         ctx.strokeStyle = a.energy > 0.5 ? 'rgba(100,255,100,0.5)' :
                           a.energy > 0.2 ? 'rgba(255,200,50,0.5)' : 'rgba(255,50,50,0.5)';
         ctx.lineWidth = 1.5;
         ctx.beginPath();
-        ctx.arc(ax, ay + bobY, size + 2, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * a.energy);
+        ctx.arc(ax, ay + bobY, size + 2, -HALF_PI, -HALF_PI + TWO_PI * a.energy);
         ctx.stroke();
       }
 
       // State indicator
-      if (ts > 10 && ts <= 20) {
-        const stateIcon = a.state === 'flee' ? '!' : a.state === 'rest' ? 'z' : '';
+      if (showStateIcon) {
+        const stateIcon = st === 'flee' ? '!' : st === 'rest' ? 'z' : '';
         if (stateIcon) {
           ctx.font = `bold ${size}px sans-serif`;
           ctx.textAlign = 'center';
-          ctx.fillStyle = a.state === 'flee' ? '#ff4444' : '#aaaaff';
+          ctx.fillStyle = st === 'flee' ? '#ff4444' : '#aaaaff';
           ctx.fillText(stateIcon, ax, ay + bobY - size - 3);
         }
       }
 
       // Emoji at high zoom
-      if (ts > 20) {
+      if (showEmoji) {
         ctx.font = `${size * 2.2}px serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';

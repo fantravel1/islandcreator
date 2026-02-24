@@ -139,8 +139,13 @@ export class ParticleSystem {
       }
 
       if (p.life >= p.maxLife || p.y > canvasH + 10 || p.x < -20 || p.x > canvasW + 20) {
-        this.particles.splice(i, 1);
+        // Swap-and-pop instead of splice for O(1) removal
+        const last = this.particles[this.particles.length - 1];
+        this.particles[i] = last;
+        this.particles.length--;
         this._returnParticle(p);
+        // Re-check current index since we swapped
+        // (loop already decrements i)
       }
     }
   }

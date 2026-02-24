@@ -31,16 +31,9 @@ export class TitleScreen {
             <label class="title-label">Island Name</label>
             <input type="text" class="title-input" id="island-name-input" placeholder="My Island" maxlength="24" autocomplete="off" />
           </div>
-          <div class="title-input-group">
-            <label class="title-label">World Seed</label>
-            <div class="title-seed-row">
-              <input type="text" class="title-input title-seed" id="island-seed-input" placeholder="Random" maxlength="8" autocomplete="off" inputmode="numeric" />
-              <button class="title-seed-dice" id="seed-dice">🎲</button>
-            </div>
-          </div>
           <button class="title-btn title-btn-primary" data-action="generate">
             <span class="btn-icon">🌊</span>
-            <span class="btn-text">Generate Island</span>
+            <span class="btn-text">Create Island</span>
           </button>
           <button class="title-btn title-btn-back" data-action="back">
             <span class="btn-text">← Back</span>
@@ -71,20 +64,7 @@ export class TitleScreen {
   }
 
   _setupEvents() {
-    // Dice button for random seed
     this.el.addEventListener('pointerdown', (e) => {
-      const dice = e.target.closest('#seed-dice');
-      if (dice) {
-        e.preventDefault();
-        e.stopPropagation();
-        const seedInput = this.el.querySelector('#island-seed-input');
-        if (seedInput) {
-          seedInput.value = ((Math.random() * 999999) | 0).toString();
-        }
-        if (navigator.vibrate) navigator.vibrate(15);
-        return;
-      }
-
       const btn = e.target.closest('[data-action]');
       if (!btn) return;
       e.preventDefault();
@@ -109,11 +89,8 @@ export class TitleScreen {
         this._showCreateForm();
       } else if (action === 'generate') {
         const nameInput = this.el.querySelector('#island-name-input');
-        const seedInput = this.el.querySelector('#island-seed-input');
         const name = (nameInput?.value || '').trim() || 'My Island';
-        const seedStr = (seedInput?.value || '').trim();
-        const seed = seedStr ? parseInt(seedStr, 10) || 0 : (Math.random() * 999999) | 0;
-        this._fadeOut(() => bus.emit('titleAction', { action: 'new', name, seed }));
+        this._fadeOut(() => bus.emit('titleAction', { action: 'new', name }));
       } else if (action === 'back') {
         this._hideCreateForm();
       }

@@ -45,13 +45,15 @@ export class OverlayRenderer {
       ctx.setLineDash([]);
 
       // Highlight affected tiles
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+      const r2 = radius * radius;
+      const tsI = ts | 0;
       for (let dy = -radius; dy <= radius; dy++) {
         for (let dx = -radius; dx <= radius; dx++) {
-          if (dx * dx + dy * dy <= radius * radius) {
+          if (dx * dx + dy * dy <= r2) {
             const sx = ((tx + dx) * ts + offsetX) | 0;
             const sy = ((ty + dy) * ts + offsetY) | 0;
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
-            ctx.fillRect(sx, sy, ts | 0, ts | 0);
+            ctx.fillRect(sx, sy, tsI, tsI);
           }
         }
       }
