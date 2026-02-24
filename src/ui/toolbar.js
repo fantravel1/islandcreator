@@ -2,7 +2,7 @@ import { bus } from '../engine/events.js';
 import {
   TOOL_SCULPT, TOOL_BIOME, TOOL_ANIMAL, TOOL_ZONE, TOOL_GOVERNANCE, TOOL_INSPECT,
   TOOL_BUILD,
-  BIOME_FOREST, BIOME_GRASSLAND, BIOME_DESERT,
+  BIOME_FOREST, BIOME_GRASSLAND, BIOME_DESERT, BIOME_TUNDRA, BIOME_JUNGLE,
 } from '../data/constants.js';
 import { SPECIES_LIST } from '../data/species.js';
 import { STRUCTURE_LIST } from '../sim/structures.js';
@@ -21,6 +21,8 @@ const BIOMES = [
   { id: BIOME_FOREST, icon: '🌲', label: 'Forest' },
   { id: BIOME_GRASSLAND, icon: '🌾', label: 'Grass' },
   { id: BIOME_DESERT, icon: '🏜️', label: 'Desert' },
+  { id: BIOME_TUNDRA, icon: '❄️', label: 'Tundra' },
+  { id: BIOME_JUNGLE, icon: '🌴', label: 'Jungle' },
 ];
 
 export class Toolbar {

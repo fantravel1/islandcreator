@@ -33,10 +33,20 @@ export function saveGame(gameState) {
             state: a.state,
             cooldown: a.cooldown || 0,
           })),
+          structures: (island.entities.structures || []).map(s => ({
+            id: s.id,
+            typeId: s.typeId,
+            x: s.x,
+            y: s.y,
+            size: s.size,
+            age: s.age,
+            health: s.health,
+          })),
         },
         stats: island.stats,
       })),
       zones: gameState._zoneManager?.toJSON(),
+      weather: gameState._weatherSystem?.toJSON(),
     };
 
     const json = JSON.stringify(data);
