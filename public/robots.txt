@@ -1,9 +1,0 @@
-User-agent: *
-Allow: /
-Allow: /about
-Allow: /features
-Allow: /wildlife
-
-Disallow: /src/
-
-Sitemap: https://islandcreator.vercel.app/sitemap.xml
