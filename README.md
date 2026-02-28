@@ -2,6 +2,14 @@
 
 A browser-first 3D island builder where you sculpt terrain in quasi God Mode, tune water/mountains/vegetation, watch animals roam, and guide early human settlements into a harmonious archipelago.
 
+## Progression loop
+
+1. Start with one island and resident animals.
+2. Bring first humans.
+3. Gather resources, build huts, craft tools, and establish a village plaza.
+4. Keep harmony stable to unlock sailing.
+5. Sail to connected islands and co-build across the archipelago.
+
 ## Mobile-first controls
 
 - Use the top **Sculpt / Camera** switch.

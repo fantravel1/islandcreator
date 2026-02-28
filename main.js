@@ -75,12 +75,17 @@ app.innerHTML = `
       </section>
 
       <section>
-        <h2>Civilization</h2>
+        <h2>Settlement Builder</h2>
         <div class="button-row">
           <button id="bring-humans" type="button">Bring First Humans</button>
-          <button id="growth-pulse" type="button">Nurture Growth</button>
-          <button id="add-island" type="button">Add Connected Island</button>
+          <button id="gather-resources" type="button">Gather Resources</button>
+          <button id="build-hut" type="button">Build Hut</button>
+          <button id="build-plaza" type="button">Build Village Plaza</button>
+          <button id="craft-tools" type="button">Craft Tool Kit</button>
+          <button id="craft-canoe" type="button">Craft Canoe</button>
+          <button id="sail-island" type="button" disabled>Sail to New Island (Locked)</button>
         </div>
+        <p class="hint" id="sail-req">Grow one balanced island first. Sailing unlocks after stable harmony.</p>
       </section>
 
       <section>
@@ -90,6 +95,19 @@ app.innerHTML = `
           <div><span>Animals</span><strong id="stat-animals">0</strong></div>
           <div><span>Humans</span><strong id="stat-humans">0</strong></div>
           <div><span>Huts</span><strong id="stat-huts">0</strong></div>
+          <div><span>Plazas</span><strong id="stat-plazas">0</strong></div>
+        </div>
+        <div class="phase-card">
+          <span>Phase</span>
+          <strong id="phase-label">Founding</strong>
+        </div>
+        <div class="resource-grid">
+          <div><span>Wood</span><strong id="resource-wood">0</strong></div>
+          <div><span>Stone</span><strong id="resource-stone">0</strong></div>
+          <div><span>Fiber</span><strong id="resource-fiber">0</strong></div>
+          <div><span>Food</span><strong id="resource-food">0</strong></div>
+          <div><span>Tools</span><strong id="item-tools">0</strong></div>
+          <div><span>Canoes</span><strong id="item-canoes">0</strong></div>
         </div>
         <div class="harmony-wrap">
           <div class="harmony-label">
@@ -104,7 +122,7 @@ app.innerHTML = `
 
       <section>
         <h2>Guide</h2>
-        <p class="hint" id="hint-text">Sculpt mode: drag terrain. Camera mode: orbit and zoom.</p>
+        <p class="hint" id="hint-text">Build one thriving island first. Sailing unlocks only after harmony holds.</p>
         <ul id="event-log"></ul>
       </section>
     </aside>
@@ -127,6 +145,7 @@ const QUALITY_PRESETS = {
     maxAnimalsPerIsland: 7,
     maxHumansPerIsland: 12,
     maxHutsPerIsland: 5,
+    maxPlazasPerIsland: 2,
     maxIslands: 8,
     simulationStride: 2,
     treeLodDistance: 130,
@@ -143,6 +162,7 @@ const QUALITY_PRESETS = {
     maxAnimalsPerIsland: 10,
     maxHumansPerIsland: 20,
     maxHutsPerIsland: 8,
+    maxPlazasPerIsland: 3,
     maxIslands: 10,
     simulationStride: 1,
     treeLodDistance: 175,
@@ -159,6 +179,7 @@ const QUALITY_PRESETS = {
     maxAnimalsPerIsland: 14,
     maxHumansPerIsland: 30,
     maxHutsPerIsland: 12,
+    maxPlazasPerIsland: 5,
     maxIslands: 12,
     simulationStride: 1,
     treeLodDistance: 235,
@@ -239,9 +260,22 @@ const hutDoorGeometry = new THREE.BoxGeometry(0.2, 0.36, 0.03);
 const hutBaseMaterial = new THREE.MeshStandardMaterial({ color: 0xc49b6e, roughness: 0.92 });
 const hutRoofMaterial = new THREE.MeshStandardMaterial({ color: 0xae6838, roughness: 0.95 });
 const hutDoorMaterial = new THREE.MeshStandardMaterial({ color: 0x5f3f2a, roughness: 0.95 });
+const plazaBaseGeometry = new THREE.CylinderGeometry(1.35, 1.55, 0.5, 10);
+const plazaRingGeometry = new THREE.TorusGeometry(1.26, 0.11, 8, 24);
+const plazaPostGeometry = new THREE.CylinderGeometry(0.1, 0.1, 0.9, 7);
+const plazaBaseMaterial = new THREE.MeshStandardMaterial({ color: 0xbf9a72, roughness: 0.9 });
+const plazaRingMaterial = new THREE.MeshStandardMaterial({ color: 0x8b603f, roughness: 0.92 });
+const plazaPostMaterial = new THREE.MeshStandardMaterial({ color: 0x6d4a30, roughness: 0.9 });
 
 const humanBodyGeometry = new THREE.CylinderGeometry(0.13, 0.15, 0.48, 8);
 const humanHeadGeometry = new THREE.SphereGeometry(0.12, 10, 8);
+
+const BUILD_COSTS = {
+  hut: { wood: 16, stone: 8, fiber: 12, food: 4 },
+  plaza: { wood: 44, stone: 28, fiber: 22, food: 10, tools: 2 },
+  tools: { wood: 7, stone: 7, fiber: 2 },
+  canoe: { wood: 24, fiber: 14, food: 8, tools: 1 }
+};
 
 function createTreeMesh() {
   const group = new THREE.Group();
@@ -333,6 +367,36 @@ function createHutMesh() {
   return group;
 }
 
+function createVillagePlazaMesh() {
+  const group = new THREE.Group();
+
+  const base = new THREE.Mesh(plazaBaseGeometry, plazaBaseMaterial);
+  base.position.y = 0.26;
+  base.castShadow = true;
+
+  const ring = new THREE.Mesh(plazaRingGeometry, plazaRingMaterial);
+  ring.position.y = 0.54;
+  ring.rotation.x = Math.PI / 2;
+  ring.castShadow = true;
+
+  const postOffsets = [
+    [0.8, 0],
+    [-0.8, 0],
+    [0, 0.8],
+    [0, -0.8]
+  ];
+
+  for (const [x, z] of postOffsets) {
+    const post = new THREE.Mesh(plazaPostGeometry, plazaPostMaterial);
+    post.position.set(x, 0.95, z);
+    post.castShadow = true;
+    group.add(post);
+  }
+
+  group.add(base, ring);
+  return group;
+}
+
 function terrainColor(height, waterLevel, outColor) {
   if (height < waterLevel - 2.1) {
     outColor.set(0x385674);
@@ -372,6 +436,7 @@ class TerrainIsland {
     this.animals = [];
     this.huts = [];
     this.humans = [];
+    this.plazas = [];
 
     this.needsVegetationRegen = false;
     this.needsObjectReposition = true;
@@ -605,12 +670,25 @@ class IslandGame {
       vegetationDensity: document.getElementById("vegetation-density"),
       islandScale: document.getElementById("island-scale"),
       bringHumans: document.getElementById("bring-humans"),
-      growthPulse: document.getElementById("growth-pulse"),
-      addIsland: document.getElementById("add-island"),
+      gatherResources: document.getElementById("gather-resources"),
+      buildHut: document.getElementById("build-hut"),
+      buildPlaza: document.getElementById("build-plaza"),
+      craftTools: document.getElementById("craft-tools"),
+      craftCanoe: document.getElementById("craft-canoe"),
+      sailIsland: document.getElementById("sail-island"),
+      sailReq: document.getElementById("sail-req"),
       statIslands: document.getElementById("stat-islands"),
       statAnimals: document.getElementById("stat-animals"),
       statHumans: document.getElementById("stat-humans"),
       statHuts: document.getElementById("stat-huts"),
+      statPlazas: document.getElementById("stat-plazas"),
+      phaseLabel: document.getElementById("phase-label"),
+      resourceWood: document.getElementById("resource-wood"),
+      resourceStone: document.getElementById("resource-stone"),
+      resourceFiber: document.getElementById("resource-fiber"),
+      resourceFood: document.getElementById("resource-food"),
+      itemTools: document.getElementById("item-tools"),
+      itemCanoes: document.getElementById("item-canoes"),
       harmonyScore: document.getElementById("harmony-score"),
       harmonyFill: document.getElementById("harmony-fill"),
       eventLog: document.getElementById("event-log"),
@@ -633,13 +711,28 @@ class IslandGame {
       civilizationUnlocked: false,
       interactionMode: this.isMobile ? "sculpt" : "camera",
       panelCollapsed: this.isMobile,
-      qualityLevel: "auto"
+      qualityLevel: "auto",
+      phaseLabel: "Founding",
+      sailUnlocked: false,
+      harmonyGateSeconds: 0,
+      gatherCooldown: 0,
+      resources: {
+        wood: 24,
+        stone: 18,
+        fiber: 20,
+        food: 24
+      },
+      items: {
+        tools: 0,
+        canoes: 0
+      }
     };
 
     this.islands = [];
     this.animals = [];
     this.humans = [];
     this.huts = [];
+    this.villagePlazas = [];
     this.bridges = [];
 
     this.selectedIsland = null;
@@ -653,9 +746,9 @@ class IslandGame {
 
     this.lastTime = performance.now();
     this.statusAccumulator = 0;
-    this.growthAccumulator = 0;
     this.ecologyRefreshAccumulator = 0;
     this.lodAccumulator = 0;
+    this.resourceDripAccumulator = 0;
     this.frameCounter = 0;
 
     this._setupScene();
@@ -669,7 +762,7 @@ class IslandGame {
     this._animate = this._animate.bind(this);
     requestAnimationFrame(this._animate);
 
-    this.log("Animals are thriving. Sculpt terrain and grow the archipelago.");
+    this.log("Begin with one island. Build a calm village before sailing anywhere else.");
   }
 
   _resolveQualityPreset(choice) {
@@ -748,8 +841,8 @@ class IslandGame {
     this.controlsRef.modeCamera.classList.toggle("active", !sculptMode);
 
     this.controlsRef.hintText.textContent = sculptMode
-      ? "Sculpt mode: drag one finger or mouse to shape terrain."
-      : "Camera mode: drag to orbit, pinch/wheel to zoom, drag with two fingers to pan.";
+      ? "Sculpt mode: shape your main island for safe village land."
+      : "Camera mode: orbit and inspect village balance before expanding.";
 
     this.sculpting = false;
     this.sculptPointerId = null;
@@ -792,6 +885,12 @@ class IslandGame {
             human.home = null;
           }
         }
+      }
+
+      while (island.plazas.length > caps.maxPlazasPerIsland) {
+        const plaza = island.plazas.pop();
+        this._removeFromArray(this.villagePlazas, plaza);
+        this.scene.remove(plaza.mesh);
       }
     }
   }
@@ -996,12 +1095,28 @@ class IslandGame {
       this.unlockHumans();
     });
 
-    this.controlsRef.growthPulse.addEventListener("click", () => {
-      this.triggerGrowthPulse(false);
+    this.controlsRef.gatherResources.addEventListener("click", () => {
+      this.gatherResources(true);
     });
 
-    this.controlsRef.addIsland.addEventListener("click", () => {
-      this.addConnectedIsland(false);
+    this.controlsRef.buildHut.addEventListener("click", () => {
+      this.buildHut();
+    });
+
+    this.controlsRef.buildPlaza.addEventListener("click", () => {
+      this.buildVillagePlaza();
+    });
+
+    this.controlsRef.craftTools.addEventListener("click", () => {
+      this.craftToolKit();
+    });
+
+    this.controlsRef.craftCanoe.addEventListener("click", () => {
+      this.craftCanoe();
+    });
+
+    this.controlsRef.sailIsland.addEventListener("click", () => {
+      this.sailToNewIsland();
     });
   }
 
@@ -1018,6 +1133,8 @@ class IslandGame {
     } else {
       this.controlsRef.islandScaleValue.textContent = "1.00x";
     }
+
+    this._updateBuilderUI();
   }
 
   log(message) {
@@ -1032,13 +1149,311 @@ class IslandGame {
     }
   }
 
+  _primaryIsland() {
+    return this.islands[0] ?? null;
+  }
+
+  _focusIslandForBuilding() {
+    if (!this.state.sailUnlocked) {
+      return this._primaryIsland();
+    }
+    return this.selectedIsland ?? this._primaryIsland();
+  }
+
+  _costToText(cost) {
+    return Object.entries(cost)
+      .map(([key, value]) => `${value} ${key}`)
+      .join(", ");
+  }
+
+  _hasCost(cost) {
+    for (const [key, value] of Object.entries(cost)) {
+      if (key in this.state.resources && this.state.resources[key] < value) {
+        return false;
+      }
+      if (key in this.state.items && this.state.items[key] < value) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  _spendCost(cost) {
+    if (!this._hasCost(cost)) {
+      return false;
+    }
+    for (const [key, value] of Object.entries(cost)) {
+      if (key in this.state.resources) {
+        this.state.resources[key] -= value;
+      } else if (key in this.state.items) {
+        this.state.items[key] -= value;
+      }
+    }
+    return true;
+  }
+
+  _gainResources(payload) {
+    for (const [key, value] of Object.entries(payload)) {
+      if (key in this.state.resources) {
+        this.state.resources[key] += value;
+      }
+    }
+  }
+
+  _updateBuilderUI() {
+    this.controlsRef.resourceWood.textContent = String(this.state.resources.wood);
+    this.controlsRef.resourceStone.textContent = String(this.state.resources.stone);
+    this.controlsRef.resourceFiber.textContent = String(this.state.resources.fiber);
+    this.controlsRef.resourceFood.textContent = String(this.state.resources.food);
+    this.controlsRef.itemTools.textContent = String(this.state.items.tools);
+    this.controlsRef.itemCanoes.textContent = String(this.state.items.canoes);
+    this.controlsRef.phaseLabel.textContent = this.state.phaseLabel;
+
+    const civReady = this.state.civilizationUnlocked;
+    const gatherCooldown = Math.ceil(this.state.gatherCooldown);
+    this.controlsRef.gatherResources.disabled = !civReady || gatherCooldown > 0;
+    this.controlsRef.gatherResources.textContent =
+      gatherCooldown > 0 ? `Gather Resources (${gatherCooldown}s)` : "Gather Resources";
+
+    this.controlsRef.buildHut.disabled = !civReady;
+    this.controlsRef.buildPlaza.disabled = !civReady;
+    this.controlsRef.craftTools.disabled = !civReady;
+    this.controlsRef.craftCanoe.disabled = !civReady;
+
+    const canSailNow =
+      this.state.sailUnlocked && this.state.items.canoes > 0 && this.islands.length < this.performancePreset.maxIslands;
+    this.controlsRef.sailIsland.disabled = !canSailNow;
+    this.controlsRef.sailIsland.textContent = this.state.sailUnlocked
+      ? "Sail to New Island"
+      : "Sail to New Island (Locked)";
+
+    const primaryIsland = this._primaryIsland();
+    const primaryHuts = primaryIsland ? primaryIsland.huts.length : 0;
+    const primaryPlazas = primaryIsland ? primaryIsland.plazas.length : 0;
+    if (!civReady) {
+      this.controlsRef.sailReq.textContent = "Bring the first humans, then build your island village.";
+    } else if (this.state.sailUnlocked) {
+      this.controlsRef.sailReq.textContent = "Sailing unlocked. Send a canoe to begin co-building another island.";
+    } else {
+      this.controlsRef.sailReq.textContent =
+        `Need 4 huts (${primaryHuts}/4), 1 plaza (${primaryPlazas}/1), 2 tools (${this.state.items.tools}/2), ` +
+        `1 canoe (${this.state.items.canoes}/1), harmony 86+ for 30s (${Math.floor(this.state.harmonyGateSeconds)}s).`;
+    }
+  }
+
+  gatherResources(manual) {
+    if (!this.state.civilizationUnlocked) {
+      if (manual) {
+        this.log("Bring humans first so someone can gather materials.");
+      }
+      return;
+    }
+
+    if (manual && this.state.gatherCooldown > 0) {
+      this.log("Gatherers are still out. Try again in a moment.");
+      return;
+    }
+
+    const island = this._primaryIsland();
+    const visibleTrees = island ? island.trees.filter((tree) => tree.baseVisible !== false).length : 0;
+    const animalCount = island ? island.animals.length : 0;
+    const hutCount = island ? island.huts.length : 0;
+    const plazaCount = island ? island.plazas.length : 0;
+    const peopleCount = island ? island.humans.length : 0;
+
+    if (manual) {
+      this._gainResources({
+        wood: 4 + Math.floor(visibleTrees / 40) + Math.min(2, hutCount),
+        stone: 2 + plazaCount,
+        fiber: 3 + Math.round(this.state.vegetationDensity * 2),
+        food: 2 + Math.min(3, Math.floor((animalCount + peopleCount) / 6))
+      });
+      this.state.gatherCooldown = 4;
+      this.log("Gathering team returned with supplies.");
+    } else {
+      this._gainResources({
+        wood: 1 + Math.min(1, hutCount),
+        stone: 1,
+        fiber: 1,
+        food: 1 + Math.min(1, plazaCount)
+      });
+    }
+  }
+
+  buildHut() {
+    if (!this.state.civilizationUnlocked) {
+      this.log("Bring the first humans before building huts.");
+      return;
+    }
+
+    const island = this._focusIslandForBuilding();
+    if (!island) {
+      return;
+    }
+
+    if (island.huts.length >= this.performancePreset.maxHutsPerIsland) {
+      this.log("This island is at its hut cap for the current quality setting.");
+      return;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.hut)) {
+      this.log(`Need: ${this._costToText(BUILD_COSTS.hut)}.`);
+      return;
+    }
+
+    this._spawnSettlement(island, 1, 1);
+    this.log("A new hut is complete.");
+  }
+
+  buildVillagePlaza() {
+    if (!this.state.civilizationUnlocked) {
+      this.log("Bring humans first, then establish a village plaza.");
+      return;
+    }
+
+    const island = this._focusIslandForBuilding();
+    if (!island) {
+      return;
+    }
+
+    if (island.huts.length < 3) {
+      this.log("Build at least 3 huts on this island before a village plaza.");
+      return;
+    }
+
+    if (island.plazas.length >= this.performancePreset.maxPlazasPerIsland) {
+      this.log("This island is already at the village plaza cap.");
+      return;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.plaza)) {
+      this.log(`Need: ${this._costToText(BUILD_COSTS.plaza)}.`);
+      return;
+    }
+
+    const point = island.randomLandPoint(this.state.waterLevel + 0.8, this.state.waterLevel + 9);
+    const mesh = createVillagePlazaMesh();
+    mesh.rotation.y = Math.random() * Math.PI * 2;
+    mesh.traverse((node) => {
+      if (node.isMesh) {
+        node.castShadow = this.performancePreset.shadows;
+      }
+    });
+    this.scene.add(mesh);
+
+    const plaza = {
+      island,
+      mesh,
+      localX: point.lx,
+      localZ: point.lz,
+      flooded: false
+    };
+
+    island.plazas.push(plaza);
+    this.villagePlazas.push(plaza);
+    island.needsObjectReposition = true;
+
+    this._spawnSettlement(island, 2, 0);
+    this.log("Village plaza raised. Community life is stabilizing.");
+  }
+
+  craftToolKit() {
+    if (!this.state.civilizationUnlocked) {
+      this.log("Bring humans first, then craft tool kits.");
+      return;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.tools)) {
+      this.log(`Need: ${this._costToText(BUILD_COSTS.tools)}.`);
+      return;
+    }
+
+    this.state.items.tools += 1;
+    this.log("Tool kit crafted. Building efficiency improved.");
+  }
+
+  craftCanoe() {
+    if (!this.state.civilizationUnlocked) {
+      this.log("Bring humans first, then craft canoes.");
+      return;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.canoe)) {
+      this.log(`Need: ${this._costToText(BUILD_COSTS.canoe)}.`);
+      return;
+    }
+
+    this.state.items.canoes += 1;
+    this.log("A canoe is ready at the shoreline.");
+  }
+
+  sailToNewIsland() {
+    if (!this.state.sailUnlocked) {
+      this.log("Sailing is still locked. Hold harmony and complete village goals first.");
+      return;
+    }
+
+    if (this.state.items.canoes < 1) {
+      this.log("Craft a canoe before launching to another island.");
+      return;
+    }
+
+    if (this.islands.length >= this.performancePreset.maxIslands) {
+      this.log("Map limit reached for this quality setting.");
+      return;
+    }
+
+    this.state.items.canoes -= 1;
+    const island = this.addConnectedIsland(false);
+    if (!island) {
+      this.state.items.canoes += 1;
+      return;
+    }
+
+    if (this.state.civilizationUnlocked) {
+      this._spawnSettlement(island, 2, 1);
+    }
+
+    this.log("Settlers sailed safely and started co-building a new island.");
+  }
+
+  _updatePhaseAndSailing(delta) {
+    const primaryIsland = this._primaryIsland();
+    const primaryHuts = primaryIsland ? primaryIsland.huts.length : 0;
+    const primaryPlazas = primaryIsland ? primaryIsland.plazas.length : 0;
+    const hasVillageCore = primaryPlazas >= 1 && primaryHuts >= 4 && this.state.items.tools >= 2;
+    const harmonyReady = hasVillageCore && this.state.harmony >= 86 && this.state.items.canoes >= 1;
+
+    if (!this.state.civilizationUnlocked) {
+      this.state.phaseLabel = "Founding";
+    } else if (primaryPlazas < 1) {
+      this.state.phaseLabel = "Village Building";
+    } else if (!this.state.sailUnlocked) {
+      this.state.phaseLabel = "Harmony Watch";
+    } else if (this.islands.length === 1) {
+      this.state.phaseLabel = "Ready to Sail";
+    } else {
+      this.state.phaseLabel = "Archipelago Co-Build";
+    }
+
+    if (!this.state.sailUnlocked) {
+      if (harmonyReady) {
+        this.state.harmonyGateSeconds += delta;
+      } else {
+        this.state.harmonyGateSeconds = Math.max(0, this.state.harmonyGateSeconds - delta * 0.8);
+      }
+
+      if (this.state.harmonyGateSeconds >= 30) {
+        this.state.sailUnlocked = true;
+        this.state.phaseLabel = "Ready to Sail";
+        this.log("Harmony held. Sailing routes are now unlocked.");
+      }
+    }
+  }
+
   _createInitialWorld() {
     const first = this._createIsland(new THREE.Vector3(0, 0, 0), 36);
     this._setSelectedIsland(first);
-
-    const second = this._createIsland(new THREE.Vector3(86, 0, 18), 28);
-    second.setScale(0.95);
-    this._createBridge(first, second);
 
     this._updateBridgeTransforms();
     this._updateStatusUI();
@@ -1204,6 +1619,23 @@ class IslandGame {
       tree.mesh.castShadow = this.performancePreset.shadows;
     }
 
+    for (const plaza of island.plazas) {
+      const height = island.sampleHeightLocal(plaza.localX, plaza.localZ);
+      if (height < this.state.waterLevel + 0.2) {
+        const safePoint = island.randomLandPoint(this.state.waterLevel + 0.9, this.state.waterLevel + 9);
+        plaza.localX = safePoint.lx;
+        plaza.localZ = safePoint.lz;
+      }
+
+      const adjustedHeight = island.sampleHeightLocal(plaza.localX, plaza.localZ);
+      plaza.flooded = adjustedHeight < this.state.waterLevel + 0.2;
+      plaza.mesh.position.set(
+        island.center.x + plaza.localX * island.scale,
+        adjustedHeight,
+        island.center.z + plaza.localZ * island.scale
+      );
+    }
+
     this._applyTreeLodForIsland(island);
     island.needsObjectReposition = false;
   }
@@ -1280,10 +1712,10 @@ class IslandGame {
     this.state.civilizationUnlocked = true;
 
     const seedIsland = this.islands[0];
-    this._spawnSettlement(seedIsland, 6, 2);
+    this._spawnSettlement(seedIsland, 3, 1);
 
     this.controlsRef.bringHumans.textContent = "Humans Arrived";
-    this.log("The first voyagers landed and built their first huts.");
+    this.log("The first voyagers landed. Begin gathering, building, and crafting.");
   }
 
   _spawnSettlement(island, humanCount, hutCount) {
@@ -1495,7 +1927,7 @@ class IslandGame {
       if (!autoTriggered) {
         this.log("Map limit reached for this quality level. Increase quality or grow current islands.");
       }
-      return;
+      return null;
     }
 
     const anchor = this.selectedIsland ?? this.islands[Math.floor(Math.random() * this.islands.length)];
@@ -1544,16 +1976,14 @@ class IslandGame {
       this._createBridge(nearest, island);
     }
 
-    if (this.state.civilizationUnlocked && this.state.harmony > 58) {
-      this._spawnSettlement(island, 2, 1);
-    }
-
     this._setSelectedIsland(island);
     this._updateBridgeTransforms();
 
     if (!autoTriggered) {
-      this.log("A new connected island rose from the sea.");
+      this.log("A connected island rose from the sea.");
     }
+
+    return island;
   }
 
   _harmonyScore() {
@@ -1561,6 +1991,7 @@ class IslandGame {
     const animalCount = this.animals.length;
     const humanCount = this.humans.length;
     const hutCount = this.huts.length;
+    const plazaCount = this.villagePlazas.length;
 
     let rootedTrees = 0;
     for (const island of this.islands) {
@@ -1571,18 +2002,27 @@ class IslandGame {
       }
     }
 
-    const treeScore = clamp((rootedTrees / Math.max(1, islandCount * 55)) * 30, 0, 30);
-    const animalScore = clamp((animalCount / Math.max(1, islandCount * 6)) * 20, 0, 20);
-    const bridgeScore = clamp((this.bridges.length / Math.max(1, islandCount - 1)) * 16, 0, 16);
-    const spreadScore = islandCount > 1 ? clamp((islandCount / 10) * 8, 0, 8) : 2;
+    const treeScore = clamp((rootedTrees / Math.max(1, islandCount * 55)) * 26, 0, 26);
+    const animalScore = clamp((animalCount / Math.max(1, islandCount * 6)) * 18, 0, 18);
+    const villageScore = clamp(plazaCount * 6, 0, 12);
+    const toolScore = clamp(this.state.items.tools * 2.5, 0, 10);
+    const bridgeScore = clamp((this.bridges.length / Math.max(1, islandCount - 1)) * 8, 0, 8);
 
-    const capacity = Math.max(10, rootedTrees * 0.28 + animalCount * 0.9 + hutCount * 2.6);
-    const pressurePenalty = clamp((humanCount / capacity) * 26, 0, 26);
+    const capacity = Math.max(
+      10,
+      rootedTrees * 0.22 + animalCount * 0.8 + hutCount * 2 + plazaCount * 6 + this.state.items.tools * 1.2
+    );
+    const pressurePenalty = clamp((humanCount / capacity) * 36, 0, 32);
 
     const floodedHuts = this.huts.filter((hut) => hut.flooded).length;
-    const floodPenalty = floodedHuts * 4;
+    const floodedPlazas = this.villagePlazas.filter((plaza) => plaza.flooded).length;
+    const floodPenalty = floodedHuts * 5 + floodedPlazas * 8;
 
-    this.state.harmony = clamp(32 + treeScore + animalScore + bridgeScore + spreadScore - pressurePenalty - floodPenalty, 0, 100);
+    this.state.harmony = clamp(
+      28 + treeScore + animalScore + villageScore + toolScore + bridgeScore - pressurePenalty - floodPenalty,
+      0,
+      100
+    );
     return this.state.harmony;
   }
 
@@ -1653,10 +2093,12 @@ class IslandGame {
     this.controlsRef.statAnimals.textContent = String(this.animals.length);
     this.controlsRef.statHumans.textContent = String(this.humans.length);
     this.controlsRef.statHuts.textContent = String(this.huts.length);
+    this.controlsRef.statPlazas.textContent = String(this.villagePlazas.length);
 
     const harmony = Math.round(this._harmonyScore());
     this.controlsRef.harmonyScore.textContent = String(harmony);
     this.controlsRef.harmonyFill.style.width = `${harmony}%`;
+    this._updateBuilderUI();
   }
 
   _animate(now) {
@@ -1705,13 +2147,17 @@ class IslandGame {
       this._updateTreeLodAll();
     }
 
+    this.state.gatherCooldown = Math.max(0, this.state.gatherCooldown - delta);
     if (this.state.civilizationUnlocked) {
-      this.growthAccumulator += delta;
-      if (this.growthAccumulator > this.performancePreset.growthInterval) {
-        this.growthAccumulator = 0;
-        this.triggerGrowthPulse(true);
+      this.resourceDripAccumulator += delta;
+      if (this.resourceDripAccumulator >= 16) {
+        this.resourceDripAccumulator = 0;
+        this.gatherResources(false);
       }
     }
+
+    this._harmonyScore();
+    this._updatePhaseAndSailing(delta);
 
     this.statusAccumulator += delta;
     if (this.statusAccumulator > 0.2) {

@@ -201,6 +201,13 @@ button:active {
   transform: translateY(0);
 }
 
+button:disabled {
+  cursor: not-allowed;
+  transform: none;
+  opacity: 0.56;
+  background: rgba(238, 243, 247, 0.9);
+}
+
 input[type="range"] {
   accent-color: var(--accent);
 }
@@ -234,6 +241,51 @@ input[type="range"] {
 
 .stats-grid strong {
   font-size: 1.05rem;
+}
+
+.phase-card,
+.resource-grid > div {
+  border: 1px solid rgba(23, 56, 79, 0.16);
+  border-radius: 10px;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.phase-card {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.55rem;
+}
+
+.phase-card span {
+  font-size: 0.69rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.phase-card strong {
+  font-size: 0.9rem;
+}
+
+.resource-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.resource-grid span {
+  display: block;
+  font-size: 0.66rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.resource-grid strong {
+  font-size: 0.95rem;
 }
 
 .harmony-wrap {
