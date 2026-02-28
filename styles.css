@@ -1,0 +1,331 @@
+:root {
+  --ink: #1f3044;
+  --panel-bg: rgba(248, 255, 255, 0.84);
+  --panel-edge: rgba(15, 43, 59, 0.2);
+  --accent: #2a8ca6;
+  --accent-strong: #2f6f95;
+  --muted: #516b7f;
+  --surface: rgba(255, 255, 255, 0.86);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: "Avenir Next", "Trebuchet MS", "Gill Sans", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 12% 14%, rgba(255, 255, 255, 0.44), transparent 45%),
+    radial-gradient(circle at 84% 18%, rgba(255, 248, 201, 0.4), transparent 39%),
+    linear-gradient(145deg, #84caf0 0%, #5ea9db 44%, #79b6da 100%);
+}
+
+.ui-shell {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#viewport {
+  position: absolute;
+  inset: 0;
+}
+
+.quick-hud {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  right: 10px;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem;
+  pointer-events: none;
+}
+
+.interaction-switch,
+.panel-toggle {
+  pointer-events: auto;
+}
+
+.interaction-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.3rem;
+  width: min(245px, 62vw);
+  padding: 0.35rem;
+  border-radius: 999px;
+  background: rgba(247, 255, 255, 0.8);
+  border: 1px solid rgba(35, 84, 103, 0.18);
+  box-shadow: 0 8px 22px rgba(12, 42, 62, 0.14);
+}
+
+.mode-btn,
+.panel-toggle {
+  border: 1px solid rgba(32, 82, 103, 0.25);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 999px;
+  font-size: 0.86rem;
+  min-height: 42px;
+  padding: 0.45rem 0.7rem;
+}
+
+.mode-btn.active {
+  background: linear-gradient(135deg, #2f9db7 0%, #2c7c9f 100%);
+  color: #fff;
+  border-color: rgba(29, 80, 103, 0.65);
+}
+
+.panel-toggle {
+  min-width: 92px;
+}
+
+.control-panel {
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  max-height: min(74vh, 680px);
+  overflow: auto;
+  padding: 14px 14px calc(22px + env(safe-area-inset-bottom, 0px));
+  border-radius: 18px 18px 0 0;
+  border: 1px solid var(--panel-edge);
+  border-bottom: 0;
+  background: var(--panel-bg);
+  backdrop-filter: blur(12px);
+  box-shadow: 0 -12px 35px rgba(23, 52, 72, 0.2);
+  transition: transform 180ms ease;
+}
+
+.control-panel.collapsed {
+  transform: translateY(calc(100% - 54px));
+}
+
+.control-panel::-webkit-scrollbar {
+  width: 10px;
+}
+
+.control-panel::-webkit-scrollbar-thumb {
+  background: rgba(31, 67, 89, 0.28);
+  border-radius: 999px;
+}
+
+h1 {
+  margin: 0;
+  font-size: 1.2rem;
+  letter-spacing: 0.02em;
+}
+
+.tagline {
+  margin: 0.2rem 0 0.85rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+section {
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.64rem;
+  border-bottom: 1px dashed rgba(28, 58, 78, 0.18);
+}
+
+section:last-of-type {
+  border-bottom: 0;
+  margin-bottom: 0;
+  padding-bottom: 0;
+}
+
+h2 {
+  margin: 0 0 0.45rem;
+  font-size: 0.83rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--accent-strong);
+}
+
+.control-row {
+  display: grid;
+  gap: 0.25rem;
+  margin-bottom: 0.52rem;
+}
+
+.control-row label {
+  font-size: 0.77rem;
+  color: var(--muted);
+  display: flex;
+  justify-content: space-between;
+  gap: 0.45rem;
+}
+
+select,
+button,
+input[type="range"] {
+  width: 100%;
+}
+
+select,
+button {
+  border-radius: 12px;
+  border: 1px solid rgba(32, 82, 103, 0.23);
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  font-size: 0.9rem;
+  min-height: 44px;
+  padding: 0.55rem 0.65rem;
+}
+
+button {
+  cursor: pointer;
+  transition: transform 110ms ease, background 120ms ease;
+}
+
+button:hover {
+  transform: translateY(-1px);
+  background: rgba(236, 250, 255, 0.95);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+input[type="range"] {
+  accent-color: var(--accent);
+}
+
+.button-row {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin-bottom: 0.65rem;
+}
+
+.stats-grid > div {
+  border: 1px solid rgba(23, 56, 79, 0.16);
+  border-radius: 10px;
+  padding: 0.4rem 0.5rem;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.stats-grid span {
+  display: block;
+  font-size: 0.69rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stats-grid strong {
+  font-size: 1.05rem;
+}
+
+.harmony-wrap {
+  margin-top: 0.35rem;
+}
+
+.harmony-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.8rem;
+  margin-bottom: 0.2rem;
+}
+
+.harmony-track {
+  height: 11px;
+  border-radius: 999px;
+  background: rgba(50, 91, 120, 0.17);
+  overflow: hidden;
+}
+
+#harmony-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #cc6e4f 0%, #e5b04a 40%, #58b56c 100%);
+  transition: width 220ms ease;
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.79rem;
+  color: var(--muted);
+}
+
+#event-log {
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.28rem;
+  max-height: 130px;
+  overflow: auto;
+}
+
+#event-log li {
+  font-size: 0.73rem;
+  line-height: 1.24;
+  padding: 0.36rem 0.45rem;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.57);
+  border: 1px solid rgba(34, 74, 93, 0.13);
+}
+
+.touch-ui select,
+.touch-ui button {
+  min-height: 46px;
+}
+
+@media (min-width: 960px) {
+  .quick-hud {
+    left: 14px;
+    right: auto;
+    width: auto;
+  }
+
+  .interaction-switch {
+    width: 260px;
+  }
+
+  .panel-toggle {
+    display: none;
+  }
+
+  .control-panel {
+    top: 14px;
+    left: 14px;
+    right: auto;
+    bottom: auto;
+    width: min(360px, calc(100% - 28px));
+    max-height: calc(100% - 28px);
+    border-radius: 18px;
+    border-bottom: 1px solid var(--panel-edge);
+    box-shadow: 0 14px 40px rgba(23, 52, 72, 0.2);
+    transform: none !important;
+    padding: 14px 16px;
+  }
+
+  h1 {
+    font-size: 1.32rem;
+  }
+
+  .tagline {
+    font-size: 0.92rem;
+  }
+}
