@@ -7,13 +7,6 @@ app.innerHTML = `
   <div class="ui-shell">
     <div id="viewport"></div>
 
-    <div class="quick-hud">
-      <div class="interaction-switch" role="group" aria-label="Interaction Mode">
-        <button id="mode-sculpt" class="mode-btn" type="button">Sculpt</button>
-        <button id="mode-camera" class="mode-btn" type="button">Camera</button>
-      </div>
-    </div>
-
     <div class="message-stack" id="message-stack" aria-live="polite"></div>
 
     <aside class="control-panel" id="control-panel">
@@ -21,120 +14,135 @@ app.innerHTML = `
         <h1>Archipelago Genesis</h1>
         <button id="panel-close" class="panel-close" type="button">Close</button>
       </div>
-      <p class="tagline">Mobile-first God Mode island builder</p>
+      <p class="tagline">Action-first builder. Open tabs to sculpt and tune the world.</p>
 
-      <section>
-        <h2>Terrain Sculpt</h2>
-        <div class="control-row">
-          <label for="brush-mode">Brush Mode</label>
-          <select id="brush-mode">
-            <option value="raise">Raise Land</option>
-            <option value="lower">Lower Land</option>
-            <option value="smooth">Smooth</option>
-            <option value="mountain">Mountain Burst</option>
-          </select>
-        </div>
-        <div class="control-row">
-          <label for="brush-radius">Brush Radius <span id="brush-radius-value"></span></label>
-          <input id="brush-radius" type="range" min="2" max="24" step="0.5" value="8" />
-        </div>
-        <div class="control-row">
-          <label for="brush-strength">Brush Strength <span id="brush-strength-value"></span></label>
-          <input id="brush-strength" type="range" min="0.1" max="2" step="0.05" value="0.8" />
-        </div>
-      </section>
+      <div class="tab-strip" role="tablist" aria-label="Control Menus">
+        <button id="tab-actions" class="tab-btn active" type="button" role="tab" aria-selected="true" data-tab="actions">
+          Actions
+        </button>
+        <button id="tab-island" class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="island">
+          Island Tools
+        </button>
+        <button id="tab-world" class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="world">
+          World
+        </button>
+        <button id="tab-feed" class="tab-btn" type="button" role="tab" aria-selected="false" data-tab="feed">
+          Feed
+        </button>
+      </div>
 
-      <section>
-        <h2>World Dials</h2>
-        <div class="control-row">
-          <label for="water-level">Water Level <span id="water-level-value"></span></label>
-          <input id="water-level" type="range" min="-3" max="7" step="0.1" value="1.2" />
-        </div>
-        <div class="control-row">
-          <label for="mountain-intensity">Mountain Intensity <span id="mountain-intensity-value"></span></label>
-          <input id="mountain-intensity" type="range" min="0.3" max="2" step="0.05" value="1" />
-        </div>
-        <div class="control-row">
-          <label for="vegetation-density">Vegetation Density <span id="vegetation-density-value"></span></label>
-          <input id="vegetation-density" type="range" min="0.1" max="1" step="0.01" value="0.58" />
-        </div>
-        <div class="control-row">
-          <label for="island-scale">Selected Island Size <span id="island-scale-value"></span></label>
-          <input id="island-scale" type="range" min="0.7" max="2" step="0.05" value="1" />
-        </div>
-      </section>
-
-      <section>
-        <h2>Performance</h2>
-        <div class="control-row">
-          <label for="quality-level">Quality Level</label>
-          <select id="quality-level">
-            <option value="auto">Auto</option>
-            <option value="low">Low (Battery)</option>
-            <option value="medium">Medium</option>
-            <option value="high">High</option>
-          </select>
-        </div>
-        <p class="hint" id="quality-hint"></p>
-      </section>
-
-      <section>
-        <h2>Settlement Builder</h2>
-        <div class="button-row">
-          <button id="bring-humans" type="button">Bring First Humans</button>
-          <button id="gather-resources" type="button">Gather Resources</button>
-          <button id="garden-crops" type="button">Garden Crops</button>
-          <button id="plant-trees" type="button">Plant Trees</button>
-          <button id="care-animals" type="button">Care for Animals</button>
-          <button id="build-hut" type="button">Build Hut</button>
-          <button id="build-plaza" type="button">Build Village Plaza</button>
-          <button id="craft-tools" type="button">Craft Tool Kit</button>
-          <button id="craft-canoe" type="button">Craft Canoe</button>
-          <button id="sail-island" type="button" disabled>Sail to New Island (Locked)</button>
-        </div>
-        <p class="hint" id="sail-req">Grow one balanced island first. Sailing unlocks after stable harmony.</p>
-      </section>
-
-      <section>
-        <h2>World Status</h2>
-        <div class="stats-grid">
-          <div><span>Islands</span><strong id="stat-islands">0</strong></div>
-          <div><span>Animals</span><strong id="stat-animals">0</strong></div>
-          <div><span>Fish</span><strong id="stat-fish">0</strong></div>
-          <div><span>Species</span><strong id="stat-species">0</strong></div>
-          <div><span>Humans</span><strong id="stat-humans">0</strong></div>
-          <div><span>Huts</span><strong id="stat-huts">0</strong></div>
-          <div><span>Plazas</span><strong id="stat-plazas">0</strong></div>
-          <div><span>Gardens</span><strong id="stat-gardens">0</strong></div>
-        </div>
-        <div class="phase-card">
-          <span>Phase</span>
-          <strong id="phase-label">Founding</strong>
-        </div>
-        <div class="resource-grid">
-          <div><span>Wood</span><strong id="resource-wood">0</strong></div>
-          <div><span>Stone</span><strong id="resource-stone">0</strong></div>
-          <div><span>Fiber</span><strong id="resource-fiber">0</strong></div>
-          <div><span>Food</span><strong id="resource-food">0</strong></div>
-          <div><span>Tools</span><strong id="item-tools">0</strong></div>
-          <div><span>Canoes</span><strong id="item-canoes">0</strong></div>
-        </div>
-        <div class="harmony-wrap">
-          <div class="harmony-label">
-            <span>Harmony</span>
-            <strong id="harmony-score">0</strong>
+      <div class="tab-panels">
+        <section class="panel-tab active" data-tab-panel="actions">
+          <h2>Village Actions</h2>
+          <div class="button-row">
+            <button id="bring-humans" type="button">Bring First Humans</button>
+            <button id="gather-resources" type="button">Gather Resources</button>
+            <button id="garden-crops" type="button">Garden Crops</button>
+            <button id="plant-trees" type="button">Plant Trees</button>
+            <button id="care-animals" type="button">Care for Animals</button>
+            <button id="build-hut" type="button">Build Hut</button>
+            <button id="build-plaza" type="button">Build Village Plaza</button>
+            <button id="craft-tools" type="button">Craft Tool Kit</button>
+            <button id="craft-canoe" type="button">Craft Canoe</button>
+            <button id="sail-island" type="button" disabled>Sail to New Island (Locked)</button>
           </div>
-          <div class="harmony-track">
-            <div id="harmony-fill"></div>
-          </div>
-        </div>
-      </section>
+          <p class="hint" id="sail-req">Grow one balanced island first. Sailing unlocks after stable harmony.</p>
+        </section>
 
-      <section>
-        <h2>Guide</h2>
-        <p class="hint" id="hint-text">Build one thriving island first. Sailing unlocks only after harmony holds.</p>
-        <ul id="event-log"></ul>
-      </section>
+        <section class="panel-tab" data-tab-panel="island">
+          <h2>Island Creation</h2>
+          <div class="interaction-switch" role="group" aria-label="Interaction Mode">
+            <button id="mode-sculpt" class="mode-btn" type="button">Sculpt</button>
+            <button id="mode-camera" class="mode-btn" type="button">Camera</button>
+          </div>
+          <div class="control-row">
+            <label for="brush-mode">Brush Mode</label>
+            <select id="brush-mode">
+              <option value="raise">Raise Land</option>
+              <option value="lower">Lower Land</option>
+              <option value="smooth">Smooth</option>
+              <option value="mountain">Mountain Burst</option>
+            </select>
+          </div>
+          <div class="control-row">
+            <label for="brush-radius">Brush Radius <span id="brush-radius-value"></span></label>
+            <input id="brush-radius" type="range" min="2" max="24" step="0.5" value="8" />
+          </div>
+          <div class="control-row">
+            <label for="brush-strength">Brush Strength <span id="brush-strength-value"></span></label>
+            <input id="brush-strength" type="range" min="0.1" max="2" step="0.05" value="0.8" />
+          </div>
+          <div class="control-row">
+            <label for="island-scale">Selected Island Size <span id="island-scale-value"></span></label>
+            <input id="island-scale" type="range" min="0.7" max="2" step="0.05" value="1" />
+          </div>
+        </section>
+
+        <section class="panel-tab" data-tab-panel="world">
+          <h2>World Dials</h2>
+          <div class="control-row">
+            <label for="water-level">Water Level <span id="water-level-value"></span></label>
+            <input id="water-level" type="range" min="-3" max="7" step="0.1" value="1.2" />
+          </div>
+          <div class="control-row">
+            <label for="mountain-intensity">Mountain Intensity <span id="mountain-intensity-value"></span></label>
+            <input id="mountain-intensity" type="range" min="0.3" max="2" step="0.05" value="1" />
+          </div>
+          <div class="control-row">
+            <label for="vegetation-density">Vegetation Density <span id="vegetation-density-value"></span></label>
+            <input id="vegetation-density" type="range" min="0.1" max="1" step="0.01" value="0.58" />
+          </div>
+          <h2>Performance</h2>
+          <div class="control-row">
+            <label for="quality-level">Quality Level</label>
+            <select id="quality-level">
+              <option value="auto">Auto</option>
+              <option value="low">Low (Battery)</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+            </select>
+          </div>
+          <p class="hint" id="quality-hint"></p>
+        </section>
+
+        <section class="panel-tab" data-tab-panel="feed">
+          <h2>Detail Stats</h2>
+          <div class="stats-grid">
+            <div><span>Islands</span><strong id="stat-islands">0</strong></div>
+            <div><span>Animals</span><strong id="stat-animals">0</strong></div>
+            <div><span>Fish</span><strong id="stat-fish">0</strong></div>
+            <div><span>Species</span><strong id="stat-species">0</strong></div>
+            <div><span>Humans</span><strong id="stat-humans">0</strong></div>
+            <div><span>Huts</span><strong id="stat-huts">0</strong></div>
+            <div><span>Plazas</span><strong id="stat-plazas">0</strong></div>
+            <div><span>Gardens</span><strong id="stat-gardens">0</strong></div>
+          </div>
+          <div class="phase-card">
+            <span>Phase</span>
+            <strong id="phase-label">Founding</strong>
+          </div>
+          <div class="resource-grid">
+            <div><span>Wood</span><strong id="resource-wood">0</strong></div>
+            <div><span>Stone</span><strong id="resource-stone">0</strong></div>
+            <div><span>Fiber</span><strong id="resource-fiber">0</strong></div>
+            <div><span>Food</span><strong id="resource-food">0</strong></div>
+            <div><span>Tools</span><strong id="item-tools">0</strong></div>
+            <div><span>Canoes</span><strong id="item-canoes">0</strong></div>
+          </div>
+          <div class="harmony-wrap">
+            <div class="harmony-label">
+              <span>Harmony</span>
+              <strong id="harmony-score">0</strong>
+            </div>
+            <div class="harmony-track">
+              <div id="harmony-fill"></div>
+            </div>
+          </div>
+          <h2>Guide</h2>
+          <p class="hint" id="hint-text">Build one thriving island first. Sailing unlocks only after harmony holds.</p>
+          <ul id="event-log"></ul>
+        </section>
+      </div>
     </aside>
 
     <div class="bottom-hud" id="bottom-hud">
@@ -165,7 +173,7 @@ app.innerHTML = `
         </div>
         <p class="hud-note">Keep harmony high to unlock sailing.</p>
       </div>
-      <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="false">Controls</button>
+      <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="false">Menu</button>
     </div>
   </div>
 `;
@@ -800,6 +808,12 @@ class IslandGame {
       controlPanel: document.getElementById("control-panel"),
       panelToggle: document.getElementById("panel-toggle"),
       panelClose: document.getElementById("panel-close"),
+      tabActions: document.getElementById("tab-actions"),
+      tabIsland: document.getElementById("tab-island"),
+      tabWorld: document.getElementById("tab-world"),
+      tabFeed: document.getElementById("tab-feed"),
+      tabButtons: Array.from(document.querySelectorAll(".tab-btn")),
+      tabPanels: Array.from(document.querySelectorAll(".panel-tab")),
       modeSculpt: document.getElementById("mode-sculpt"),
       modeCamera: document.getElementById("mode-camera"),
       hudPhase: document.getElementById("hud-phase"),
@@ -876,6 +890,7 @@ class IslandGame {
       civilizationUnlocked: false,
       interactionMode: this.isMobile ? "sculpt" : "camera",
       panelCollapsed: this.isMobile,
+      activeTab: "actions",
       qualityLevel: "auto",
       phaseLabel: "Founding",
       sailUnlocked: false,
@@ -930,7 +945,8 @@ class IslandGame {
     this._bindUI();
     this._applyQualitySetting(this.state.qualityLevel, false);
     this._setInteractionMode(this.state.interactionMode, false);
-    this._setPanelCollapsed(this.state.panelCollapsed, false);
+    this._setPanelCollapsed(this.state.panelCollapsed);
+    this._setActiveTab(this.state.activeTab);
     this._createInitialWorld();
     this._refreshValueLabels();
 
@@ -989,17 +1005,26 @@ class IslandGame {
     this.state.panelCollapsed = collapsed;
     this.controlsRef.controlPanel.classList.toggle("collapsed", collapsed);
     if (syncButton) {
-      this.controlsRef.panelToggle.textContent = collapsed ? "Controls" : "Hide Controls";
+      this.controlsRef.panelToggle.textContent = collapsed ? "Menu" : "Hide Menu";
     }
     this.controlsRef.panelToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
-    document.body.classList.toggle("panel-open", !collapsed && this.isMobile);
+    document.body.classList.toggle("panel-open", !collapsed);
   }
 
   _togglePanel() {
-    if (!this.isMobile) {
-      return;
-    }
     this._setPanelCollapsed(!this.state.panelCollapsed);
+  }
+
+  _setActiveTab(tab) {
+    this.state.activeTab = tab;
+    for (const button of this.controlsRef.tabButtons) {
+      const active = button.dataset.tab === tab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    }
+    for (const panel of this.controlsRef.tabPanels) {
+      panel.classList.toggle("active", panel.dataset.tabPanel === tab);
+    }
   }
 
   _setInteractionMode(mode, announce = true) {
@@ -1169,12 +1194,12 @@ class IslandGame {
       document.body.classList.toggle("touch-ui", this.isMobile);
       if (wasMobile !== this.isMobile) {
         if (this.isMobile) {
-          this._setPanelCollapsed(true, false);
+          this._setPanelCollapsed(true);
         } else {
-          this._setPanelCollapsed(false, false);
+          this._setPanelCollapsed(false);
         }
       } else {
-        this._setPanelCollapsed(this.state.panelCollapsed, false);
+        this._setPanelCollapsed(this.state.panelCollapsed);
       }
     });
 
@@ -1228,6 +1253,12 @@ class IslandGame {
   _bindUI() {
     this.controlsRef.modeSculpt.addEventListener("click", () => this._setInteractionMode("sculpt"));
     this.controlsRef.modeCamera.addEventListener("click", () => this._setInteractionMode("camera"));
+
+    for (const button of this.controlsRef.tabButtons) {
+      button.addEventListener("click", () => {
+        this._setActiveTab(button.dataset.tab);
+      });
+    }
 
     this.controlsRef.panelToggle.addEventListener("click", () => this._togglePanel());
     this.controlsRef.panelClose.addEventListener("click", () => this._setPanelCollapsed(true));

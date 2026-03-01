@@ -96,7 +96,7 @@ async function collectStats(page) {
 
 async function waitForWorldReady(page) {
   await page.waitForSelector('#viewport canvas', { timeout: 30000 });
-  await page.waitForSelector('#stat-islands', { timeout: 30000 });
+  await page.waitForSelector('#stat-islands', { timeout: 30000, state: 'attached' });
   await page.waitForFunction(() => {
     const islands = Number.parseInt((document.getElementById('stat-islands')?.textContent ?? '').trim(), 10);
     return Number.isFinite(islands) && islands >= 1;
@@ -160,13 +160,14 @@ async function smokeScenario(browser, scenario, baseUrl) {
     await page.goto(baseUrl, { waitUntil: 'domcontentloaded', timeout: 40000 });
     await page.waitForLoadState('networkidle', { timeout: 25000 }).catch(() => {});
     await waitForWorldReady(page);
+    await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-island');
+    await page.waitForTimeout(120);
 
     const initialStats = await collectStats(page);
     result.checks.push(`initial islands=${initialStats.islands}`);
 
-    const modeSculpt = page.locator('#mode-sculpt');
-    const modeCamera = page.locator('#mode-camera');
-    await modeSculpt.click();
+    await clickWithFallback(page, '#mode-sculpt');
     result.checks.push('entered sculpt mode');
 
     const canvasBox = await page.locator('#viewport canvas').boundingBox();
@@ -184,7 +185,9 @@ async function smokeScenario(browser, scenario, baseUrl) {
     await page.mouse.up();
     result.checks.push('sculpt drag gesture executed');
 
-    await modeCamera.click();
+    await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-island');
+    await clickWithFallback(page, '#mode-camera');
     result.checks.push('entered camera mode');
 
     await ensurePanelOpen(page);
@@ -224,6 +227,7 @@ async function smokeScenario(browser, scenario, baseUrl) {
     }
 
     await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-actions');
     await page.click('#bring-humans');
     await page.waitForFunction(() => {
       const humans = Number.parseInt((document.getElementById('stat-humans')?.textContent ?? '').trim(), 10);
@@ -232,6 +236,7 @@ async function smokeScenario(browser, scenario, baseUrl) {
     result.checks.push('human onboarding works');
 
     await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-actions');
     const woodBeforeGather = toNumber(await page.textContent('#resource-wood'));
     await page.click('#gather-resources');
     await page.waitForFunction(
@@ -245,6 +250,7 @@ async function smokeScenario(browser, scenario, baseUrl) {
     result.checks.push('resource gather works');
 
     await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-actions');
     const fishBeforeCare = toNumber(await page.textContent('#stat-fish'));
     await page.click('#care-animals');
     await page.waitForFunction(
@@ -258,6 +264,7 @@ async function smokeScenario(browser, scenario, baseUrl) {
     result.checks.push('animal care action works');
 
     await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-actions');
     const hutsBeforeBuild = toNumber(await page.textContent('#stat-huts'));
     await page.click('#build-hut');
     await page.waitForFunction(
@@ -271,6 +278,7 @@ async function smokeScenario(browser, scenario, baseUrl) {
     result.checks.push('hut building works');
 
     await ensurePanelOpen(page);
+    await clickWithFallback(page, '#tab-actions');
     const toolsBeforeCraft = toNumber(await page.textContent('#item-tools'));
     await page.click('#craft-tools');
     await page.waitForFunction(
