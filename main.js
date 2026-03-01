@@ -1,5 +1,5 @@
-import * as THREE from "https://cdn.jsdelivr.net/npm/three@0.181.1/build/three.module.js";
-import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.181.1/examples/jsm/controls/OrbitControls.js";
+import * as THREE from "./vendor/three.module.js";
+import { OrbitControls } from "./vendor/OrbitControls.js";
 
 const app = document.getElementById("app");
 
@@ -83,6 +83,9 @@ app.innerHTML = `
         <div class="button-row">
           <button id="bring-humans" type="button">Bring First Humans</button>
           <button id="gather-resources" type="button">Gather Resources</button>
+          <button id="garden-crops" type="button">Garden Crops</button>
+          <button id="plant-trees" type="button">Plant Trees</button>
+          <button id="care-animals" type="button">Care for Animals</button>
           <button id="build-hut" type="button">Build Hut</button>
           <button id="build-plaza" type="button">Build Village Plaza</button>
           <button id="craft-tools" type="button">Craft Tool Kit</button>
@@ -97,9 +100,12 @@ app.innerHTML = `
         <div class="stats-grid">
           <div><span>Islands</span><strong id="stat-islands">0</strong></div>
           <div><span>Animals</span><strong id="stat-animals">0</strong></div>
+          <div><span>Fish</span><strong id="stat-fish">0</strong></div>
+          <div><span>Species</span><strong id="stat-species">0</strong></div>
           <div><span>Humans</span><strong id="stat-humans">0</strong></div>
           <div><span>Huts</span><strong id="stat-huts">0</strong></div>
           <div><span>Plazas</span><strong id="stat-plazas">0</strong></div>
+          <div><span>Gardens</span><strong id="stat-gardens">0</strong></div>
         </div>
         <div class="phase-card">
           <span>Phase</span>
@@ -139,6 +145,8 @@ app.innerHTML = `
           <div class="hud-chip"><span>Humans</span><strong id="hud-humans">0</strong></div>
           <div class="hud-chip"><span>Huts</span><strong id="hud-huts">0</strong></div>
           <div class="hud-chip"><span>Plazas</span><strong id="hud-plazas">0</strong></div>
+          <div class="hud-chip"><span>Fish</span><strong id="hud-fish">0</strong></div>
+          <div class="hud-chip"><span>Species</span><strong id="hud-species">0</strong></div>
         </div>
         <div class="hud-harmony-track">
           <div id="hud-harmony-fill"></div>
@@ -146,9 +154,14 @@ app.innerHTML = `
         <div class="hud-row hud-resources">
           <div class="hud-chip"><span>Wood</span><strong id="hud-wood">0</strong></div>
           <div class="hud-chip"><span>Stone</span><strong id="hud-stone">0</strong></div>
+          <div class="hud-chip"><span>Fiber</span><strong id="hud-fiber">0</strong></div>
           <div class="hud-chip"><span>Food</span><strong id="hud-food">0</strong></div>
           <div class="hud-chip"><span>Tools</span><strong id="hud-tools">0</strong></div>
           <div class="hud-chip"><span>Canoes</span><strong id="hud-canoes">0</strong></div>
+        </div>
+        <div class="hud-row hud-support">
+          <div class="hud-chip"><span>Gardens</span><strong id="hud-gardens">0</strong></div>
+          <div class="hud-chip"><span>Harvest Strain</span><strong id="hud-strain">0</strong></div>
         </div>
         <p class="hud-note">Keep harmony high to unlock sailing.</p>
       </div>
@@ -171,6 +184,7 @@ const QUALITY_PRESETS = {
     terrainSegments: 56,
     maxTreesPerIsland: 72,
     maxAnimalsPerIsland: 7,
+    maxFishPerIsland: 8,
     maxHumansPerIsland: 12,
     maxHutsPerIsland: 5,
     maxPlazasPerIsland: 2,
@@ -188,6 +202,7 @@ const QUALITY_PRESETS = {
     terrainSegments: 72,
     maxTreesPerIsland: 118,
     maxAnimalsPerIsland: 10,
+    maxFishPerIsland: 12,
     maxHumansPerIsland: 20,
     maxHutsPerIsland: 8,
     maxPlazasPerIsland: 3,
@@ -205,6 +220,7 @@ const QUALITY_PRESETS = {
     terrainSegments: 88,
     maxTreesPerIsland: 170,
     maxAnimalsPerIsland: 14,
+    maxFishPerIsland: 18,
     maxHumansPerIsland: 30,
     maxHutsPerIsland: 12,
     maxPlazasPerIsland: 5,
@@ -281,6 +297,12 @@ const treeCrownMaterials = [
 const animalBodyGeometry = new THREE.SphereGeometry(0.44, 12, 10);
 const animalHeadGeometry = new THREE.SphereGeometry(0.24, 10, 8);
 const animalEarGeometry = new THREE.ConeGeometry(0.07, 0.18, 5);
+const animalLegGeometry = new THREE.CylinderGeometry(0.04, 0.05, 0.24, 6);
+const animalTailGeometry = new THREE.ConeGeometry(0.06, 0.24, 5);
+const animalHornGeometry = new THREE.ConeGeometry(0.05, 0.2, 5);
+const fishBodyGeometry = new THREE.SphereGeometry(0.2, 11, 9);
+const fishTailGeometry = new THREE.ConeGeometry(0.15, 0.26, 5);
+const fishFinGeometry = new THREE.ConeGeometry(0.05, 0.12, 5);
 
 const hutBaseGeometry = new THREE.BoxGeometry(1, 0.7, 1);
 const hutRoofGeometry = new THREE.ConeGeometry(0.78, 0.55, 4);
@@ -298,11 +320,27 @@ const plazaPostMaterial = new THREE.MeshStandardMaterial({ color: 0x6d4a30, roug
 const humanBodyGeometry = new THREE.CylinderGeometry(0.13, 0.15, 0.48, 8);
 const humanHeadGeometry = new THREE.SphereGeometry(0.12, 10, 8);
 
+const ANIMAL_SPECIES = [
+  { key: "rabbit", label: "Rabbit", hueRange: [0.07, 0.13], speedRange: [0.95, 1.85], scaleRange: [0.76, 0.92] },
+  { key: "deer", label: "Deer", hueRange: [0.06, 0.12], speedRange: [0.72, 1.4], scaleRange: [1.02, 1.22] },
+  { key: "boar", label: "Boar", hueRange: [0.04, 0.09], speedRange: [0.62, 1.22], scaleRange: [0.9, 1.12] },
+  { key: "fox", label: "Fox", hueRange: [0.02, 0.06], speedRange: [0.88, 1.62], scaleRange: [0.86, 1.02] }
+];
+
+const FISH_SPECIES = [
+  { key: "reef-fish", label: "Reef Fish", hueRange: [0.02, 0.08], speedRange: [0.65, 1.25], scaleRange: [0.84, 1.18] },
+  { key: "parrotfish", label: "Parrotfish", hueRange: [0.5, 0.58], speedRange: [0.72, 1.35], scaleRange: [0.9, 1.24] },
+  { key: "silverfish", label: "Silver Fish", hueRange: [0.55, 0.62], speedRange: [0.82, 1.42], scaleRange: [0.72, 1.04] }
+];
+
 const BUILD_COSTS = {
   hut: { wood: 16, stone: 8, fiber: 12, food: 4 },
   plaza: { wood: 44, stone: 28, fiber: 22, food: 10, tools: 2 },
   tools: { wood: 7, stone: 7, fiber: 2 },
-  canoe: { wood: 24, fiber: 14, food: 8, tools: 1 }
+  canoe: { wood: 24, fiber: 14, food: 8, tools: 1 },
+  garden: { wood: 2, fiber: 8, food: 2 },
+  plantTrees: { fiber: 6, food: 2 },
+  careAnimals: { food: 5, fiber: 3 }
 };
 
 function createTreeMesh() {
@@ -328,31 +366,103 @@ function createTreeMesh() {
   return { mesh: group, scale };
 }
 
-function createAnimalMesh() {
-  const hue = lerp(0, 1, Math.random());
-  const color = new THREE.Color().setHSL(hue, 0.5, 0.7);
-  const material = new THREE.MeshStandardMaterial({ color, roughness: 0.85 });
+function createAnimalMesh(species = ANIMAL_SPECIES[Math.floor(Math.random() * ANIMAL_SPECIES.length)]) {
+  const hue = lerp(species.hueRange[0], species.hueRange[1], Math.random());
+  const bodyColor = new THREE.Color().setHSL(hue, 0.55, 0.58);
+  const accentColor = new THREE.Color().setHSL(hue, 0.32, 0.76);
 
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.84 });
+  const accentMaterial = new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.86 });
   const group = new THREE.Group();
 
-  const body = new THREE.Mesh(animalBodyGeometry, material);
-  body.position.y = 0.42;
+  const body = new THREE.Mesh(animalBodyGeometry, bodyMaterial);
+  body.position.y = 0.36;
   body.castShadow = true;
 
-  const head = new THREE.Mesh(animalHeadGeometry, material);
-  head.position.set(0.3, 0.62, 0);
+  const head = new THREE.Mesh(animalHeadGeometry, accentMaterial);
+  head.position.set(0.34, 0.53, 0);
   head.castShadow = true;
 
-  const leftEar = new THREE.Mesh(animalEarGeometry, material);
-  leftEar.position.set(0.34, 0.84, 0.09);
-  leftEar.rotation.x = Math.PI;
+  group.add(body, head);
 
-  const rightEar = new THREE.Mesh(animalEarGeometry, material);
-  rightEar.position.set(0.34, 0.84, -0.09);
-  rightEar.rotation.x = Math.PI;
+  const legOffsets = [
+    [0.16, 0.14],
+    [0.16, -0.14],
+    [-0.16, 0.14],
+    [-0.16, -0.14]
+  ];
+  for (const [x, z] of legOffsets) {
+    const leg = new THREE.Mesh(animalLegGeometry, bodyMaterial);
+    leg.position.set(x, 0.14, z);
+    leg.castShadow = true;
+    group.add(leg);
+  }
 
-  group.add(body, head, leftEar, rightEar);
-  return group;
+  if (species.key === "rabbit") {
+    const leftEar = new THREE.Mesh(animalEarGeometry, accentMaterial);
+    leftEar.position.set(0.36, 0.77, 0.09);
+    leftEar.rotation.x = Math.PI;
+    const rightEar = leftEar.clone();
+    rightEar.position.z = -0.09;
+    group.add(leftEar, rightEar);
+    body.scale.set(0.95, 0.72, 0.86);
+    head.scale.set(0.9, 1, 0.86);
+  } else if (species.key === "deer") {
+    const leftHorn = new THREE.Mesh(animalHornGeometry, accentMaterial);
+    leftHorn.position.set(0.42, 0.79, 0.08);
+    leftHorn.rotation.x = -0.24;
+    const rightHorn = leftHorn.clone();
+    rightHorn.position.z = -0.08;
+    group.add(leftHorn, rightHorn);
+    body.scale.set(1.2, 0.82, 0.9);
+    head.scale.set(1, 0.95, 0.82);
+  } else if (species.key === "boar") {
+    const snout = new THREE.Mesh(animalHeadGeometry, bodyMaterial);
+    snout.position.set(0.5, 0.48, 0);
+    snout.scale.set(0.62, 0.55, 0.58);
+    group.add(snout);
+    body.scale.set(1.15, 0.78, 1);
+    head.scale.set(0.9, 0.78, 0.82);
+  } else {
+    const tail = new THREE.Mesh(animalTailGeometry, bodyMaterial);
+    tail.position.set(-0.42, 0.54, 0);
+    tail.rotation.z = Math.PI * 0.56;
+    group.add(tail);
+    body.scale.set(1.06, 0.76, 0.84);
+    head.scale.set(0.88, 0.86, 0.74);
+  }
+
+  const scale = lerp(species.scaleRange[0], species.scaleRange[1], Math.random());
+  group.scale.setScalar(scale);
+  return { mesh: group, speciesKey: species.key, speciesLabel: species.label, speedRange: species.speedRange };
+}
+
+function createFishMesh(species = FISH_SPECIES[Math.floor(Math.random() * FISH_SPECIES.length)]) {
+  const hue = lerp(species.hueRange[0], species.hueRange[1], Math.random());
+  const bodyColor = new THREE.Color().setHSL(hue, 0.58, 0.58);
+  const finColor = new THREE.Color().setHSL(hue + 0.05, 0.42, 0.78);
+  const bodyMaterial = new THREE.MeshStandardMaterial({ color: bodyColor, roughness: 0.55, metalness: 0.08 });
+  const finMaterial = new THREE.MeshStandardMaterial({ color: finColor, roughness: 0.62, metalness: 0.06 });
+
+  const group = new THREE.Group();
+  const body = new THREE.Mesh(fishBodyGeometry, bodyMaterial);
+  body.scale.set(1.48, 0.85, 0.62);
+  body.castShadow = true;
+
+  const tail = new THREE.Mesh(fishTailGeometry, finMaterial);
+  tail.position.set(-0.35, 0, 0);
+  tail.rotation.z = Math.PI / 2;
+  tail.scale.set(1, 0.9, 0.7);
+
+  const topFin = new THREE.Mesh(fishFinGeometry, finMaterial);
+  topFin.position.set(0, 0.18, 0);
+  topFin.rotation.z = Math.PI;
+
+  group.add(body, tail, topFin);
+
+  const scale = lerp(species.scaleRange[0], species.scaleRange[1], Math.random());
+  group.scale.setScalar(scale);
+  return { mesh: group, speciesKey: species.key, speciesLabel: species.label, speedRange: species.speedRange };
 }
 
 function createHumanMesh() {
@@ -462,9 +572,11 @@ class TerrainIsland {
 
     this.trees = [];
     this.animals = [];
+    this.fish = [];
     this.huts = [];
     this.humans = [];
     this.plazas = [];
+    this.gardens = 0;
 
     this.needsVegetationRegen = false;
     this.needsObjectReposition = true;
@@ -696,11 +808,16 @@ class IslandGame {
       hudHumans: document.getElementById("hud-humans"),
       hudHuts: document.getElementById("hud-huts"),
       hudPlazas: document.getElementById("hud-plazas"),
+      hudFish: document.getElementById("hud-fish"),
+      hudSpecies: document.getElementById("hud-species"),
       hudWood: document.getElementById("hud-wood"),
       hudStone: document.getElementById("hud-stone"),
+      hudFiber: document.getElementById("hud-fiber"),
       hudFood: document.getElementById("hud-food"),
       hudTools: document.getElementById("hud-tools"),
       hudCanoes: document.getElementById("hud-canoes"),
+      hudGardens: document.getElementById("hud-gardens"),
+      hudStrain: document.getElementById("hud-strain"),
       hintText: document.getElementById("hint-text"),
       qualityLevel: document.getElementById("quality-level"),
       qualityHint: document.getElementById("quality-hint"),
@@ -713,6 +830,9 @@ class IslandGame {
       islandScale: document.getElementById("island-scale"),
       bringHumans: document.getElementById("bring-humans"),
       gatherResources: document.getElementById("gather-resources"),
+      gardenCrops: document.getElementById("garden-crops"),
+      plantTrees: document.getElementById("plant-trees"),
+      careAnimals: document.getElementById("care-animals"),
       buildHut: document.getElementById("build-hut"),
       buildPlaza: document.getElementById("build-plaza"),
       craftTools: document.getElementById("craft-tools"),
@@ -721,9 +841,12 @@ class IslandGame {
       sailReq: document.getElementById("sail-req"),
       statIslands: document.getElementById("stat-islands"),
       statAnimals: document.getElementById("stat-animals"),
+      statFish: document.getElementById("stat-fish"),
+      statSpecies: document.getElementById("stat-species"),
       statHumans: document.getElementById("stat-humans"),
       statHuts: document.getElementById("stat-huts"),
       statPlazas: document.getElementById("stat-plazas"),
+      statGardens: document.getElementById("stat-gardens"),
       phaseLabel: document.getElementById("phase-label"),
       resourceWood: document.getElementById("resource-wood"),
       resourceStone: document.getElementById("resource-stone"),
@@ -758,6 +881,12 @@ class IslandGame {
       sailUnlocked: false,
       harmonyGateSeconds: 0,
       gatherCooldown: 0,
+      gatherStrain: 0,
+      lastManualGatherAt: 0,
+      gardens: 0,
+      careActions: 0,
+      treesPlanted: 0,
+      ecoCare: 0,
       resources: {
         wood: 24,
         stone: 18,
@@ -772,6 +901,7 @@ class IslandGame {
 
     this.islands = [];
     this.animals = [];
+    this.fish = [];
     this.humans = [];
     this.huts = [];
     this.villagePlazas = [];
@@ -792,6 +922,7 @@ class IslandGame {
     this.lodAccumulator = 0;
     this.resourceDripAccumulator = 0;
     this.lowHarmonyNoticeCooldown = 0;
+    this.highStrainNoticeCooldown = 0;
     this.frameCounter = 0;
     this.displayCache = {};
 
@@ -850,7 +981,7 @@ class IslandGame {
     this.ecologyRefreshAccumulator = 0.18;
 
     if (announce) {
-      this.log(`Quality switched to ${key.toUpperCase()}.`);
+      this._notify(`Quality switched to ${key.toUpperCase()}.`, "info");
     }
   }
 
@@ -894,7 +1025,7 @@ class IslandGame {
     this.sculptPointerId = null;
 
     if (announce) {
-      this.log(sculptMode ? "Switched to Sculpt mode." : "Switched to Camera mode.");
+      this._notify(sculptMode ? "Switched to Sculpt mode." : "Switched to Camera mode.", "info");
     }
   }
 
@@ -913,6 +1044,12 @@ class IslandGame {
         const animal = island.animals.pop();
         this._removeFromArray(this.animals, animal);
         this.scene.remove(animal.mesh);
+      }
+
+      while (island.fish.length > caps.maxFishPerIsland) {
+        const fish = island.fish.pop();
+        this._removeFromArray(this.fish, fish);
+        this.scene.remove(fish.mesh);
       }
 
       while (island.humans.length > caps.maxHumansPerIsland) {
@@ -1156,6 +1293,18 @@ class IslandGame {
       this.gatherResources(true);
     });
 
+    this.controlsRef.gardenCrops.addEventListener("click", () => {
+      this.gardenCrops();
+    });
+
+    this.controlsRef.plantTrees.addEventListener("click", () => {
+      this.plantTrees();
+    });
+
+    this.controlsRef.careAnimals.addEventListener("click", () => {
+      this.careForAnimals();
+    });
+
     this.controlsRef.buildHut.addEventListener("click", () => {
       this.buildHut();
     });
@@ -1216,6 +1365,10 @@ class IslandGame {
     toast.textContent = message;
     this.controlsRef.messageStack.appendChild(toast);
 
+    while (this.controlsRef.messageStack.children.length > 4) {
+      this.controlsRef.messageStack.removeChild(this.controlsRef.messageStack.firstChild);
+    }
+
     requestAnimationFrame(() => toast.classList.add("show"));
 
     setTimeout(() => {
@@ -1225,7 +1378,7 @@ class IslandGame {
           toast.parentElement.removeChild(toast);
         }
       }, 220);
-    }, 2300);
+    }, 2800);
   }
 
   _pulseValue(el, direction = "up") {
@@ -1260,10 +1413,16 @@ class IslandGame {
   }
 
   _afterPrimaryAction(message, tone = "success") {
+    this.controlsRef.hintText.textContent = message;
     this.log(message, { toast: true, tone });
     if (this.isMobile) {
       this._setPanelCollapsed(true);
     }
+  }
+
+  _notify(message, tone = "info") {
+    this.controlsRef.hintText.textContent = message;
+    this.log(message, { toast: true, tone });
   }
 
   _primaryIsland() {
@@ -1280,6 +1439,47 @@ class IslandGame {
   _costToText(cost) {
     return Object.entries(cost)
       .map(([key, value]) => `${value} ${key}`)
+      .join(", ");
+  }
+
+  _resourceLabel(key) {
+    if (key === "wood") {
+      return "wood";
+    }
+    if (key === "stone") {
+      return "stone";
+    }
+    if (key === "fiber") {
+      return "fiber";
+    }
+    if (key === "food") {
+      return "food";
+    }
+    if (key === "tools") {
+      return "tools";
+    }
+    if (key === "canoes") {
+      return "canoes";
+    }
+    return key;
+  }
+
+  _missingCost(cost) {
+    const missing = {};
+    for (const [key, value] of Object.entries(cost)) {
+      const pool = key in this.state.resources ? this.state.resources : this.state.items;
+      const available = pool[key] ?? 0;
+      if (available < value) {
+        missing[key] = value - available;
+      }
+    }
+    return missing;
+  }
+
+  _missingCostText(cost) {
+    const missing = this._missingCost(cost);
+    return Object.entries(missing)
+      .map(([key, value]) => `${value} ${this._resourceLabel(key)}`)
       .join(", ");
   }
 
@@ -1329,16 +1529,26 @@ class IslandGame {
     this._setDisplayValue("hudPhase", this.state.phaseLabel, this.controlsRef.hudPhase);
     this._setDisplayValue("hudWood", this.state.resources.wood, this.controlsRef.hudWood);
     this._setDisplayValue("hudStone", this.state.resources.stone, this.controlsRef.hudStone);
+    this._setDisplayValue("hudFiber", this.state.resources.fiber, this.controlsRef.hudFiber);
     this._setDisplayValue("hudFood", this.state.resources.food, this.controlsRef.hudFood);
     this._setDisplayValue("hudTools", this.state.items.tools, this.controlsRef.hudTools);
     this._setDisplayValue("hudCanoes", this.state.items.canoes, this.controlsRef.hudCanoes);
+    this._setDisplayValue("hudGardens", this.state.gardens, this.controlsRef.hudGardens);
+    this._setDisplayValue("hudStrain", Math.round(this.state.gatherStrain), this.controlsRef.hudStrain);
 
     const civReady = this.state.civilizationUnlocked;
     const gatherCooldown = Math.ceil(this.state.gatherCooldown);
     this.controlsRef.gatherResources.disabled = !civReady || gatherCooldown > 0;
     this.controlsRef.gatherResources.textContent =
-      gatherCooldown > 0 ? `Gather Resources (${gatherCooldown}s)` : "Gather Resources";
+      gatherCooldown > 0
+        ? `Gather Resources (${gatherCooldown}s)`
+        : this.state.gatherStrain > 54
+          ? "Gather Resources (High Strain)"
+          : "Gather Resources";
 
+    this.controlsRef.gardenCrops.disabled = !civReady;
+    this.controlsRef.plantTrees.disabled = !civReady;
+    this.controlsRef.careAnimals.disabled = !civReady;
     this.controlsRef.buildHut.disabled = !civReady;
     this.controlsRef.buildPlaza.disabled = !civReady;
     this.controlsRef.craftTools.disabled = !civReady;
@@ -1368,13 +1578,13 @@ class IslandGame {
   gatherResources(manual) {
     if (!this.state.civilizationUnlocked) {
       if (manual) {
-        this.log("Bring humans first so someone can gather materials.");
+        this._notify("Bring humans first so someone can gather materials.", "warn");
       }
       return false;
     }
 
     if (manual && this.state.gatherCooldown > 0) {
-      this.log("Gatherers are still out. Try again in a moment.");
+      this._notify("Gatherers are still out. Try again in a moment.", "warn");
       return false;
     }
 
@@ -1392,8 +1602,32 @@ class IslandGame {
         fiber: 3 + Math.round(this.state.vegetationDensity * 2),
         food: 2 + Math.min(3, Math.floor((animalCount + peopleCount) / 6))
       });
+
+      const now = performance.now() * 0.001;
+      const secondsSinceLast = this.state.lastManualGatherAt > 0 ? now - this.state.lastManualGatherAt : 999;
+      let strainGain = 9;
+      if (secondsSinceLast < 10) {
+        strainGain += 7;
+      }
+      if (secondsSinceLast < 6) {
+        strainGain += 8;
+      }
+      if (secondsSinceLast < 3.5) {
+        strainGain += 10;
+      }
+
+      this.state.gatherStrain = clamp(this.state.gatherStrain + strainGain, 0, 100);
+      this.state.lastManualGatherAt = now;
       this.state.gatherCooldown = 4;
-      this._afterPrimaryAction("Great gathering run. New supplies reached the village.", "success");
+
+      if (this.state.gatherStrain >= 56) {
+        this._afterPrimaryAction(
+          "Supplies arrived, but the island is strained. Garden, plant trees, or care for animals to recover harmony.",
+          "warn"
+        );
+      } else {
+        this._afterPrimaryAction("Great gathering run. New supplies reached the village.", "success");
+      }
     } else {
       this._gainResources({
         wood: 1 + Math.min(1, hutCount),
@@ -1401,13 +1635,142 @@ class IslandGame {
         fiber: 1,
         food: 1 + Math.min(1, plazaCount)
       });
+      this.state.gatherStrain = Math.max(0, this.state.gatherStrain - 0.2);
     }
+    return true;
+  }
+
+  _plantTreesOnIsland(island, count) {
+    const availableSlots = Math.max(0, this.performancePreset.maxTreesPerIsland - island.trees.length);
+    const target = clamp(count, 0, availableSlots);
+    if (target <= 0) {
+      return 0;
+    }
+
+    let planted = 0;
+    let attempts = 0;
+    while (planted < target && attempts < target * 10) {
+      attempts += 1;
+      const point = island.randomLandPoint(this.state.waterLevel + 0.35, this.state.waterLevel + 11.5);
+      const { mesh, scale } = createTreeMesh();
+      mesh.rotation.y = Math.random() * Math.PI * 2;
+      island.trees.push({
+        mesh,
+        localX: point.lx,
+        localZ: point.lz,
+        baseScale: scale,
+        baseRotation: mesh.rotation.y,
+        baseVisible: true
+      });
+      this.scene.add(mesh);
+      planted += 1;
+    }
+
+    island.needsObjectReposition = true;
+    return planted;
+  }
+
+  gardenCrops() {
+    if (!this.state.civilizationUnlocked) {
+      this._notify("Bring humans first, then start island gardens.", "warn");
+      return false;
+    }
+
+    const island = this._focusIslandForBuilding();
+    if (!island) {
+      return false;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.garden)) {
+      this._notify(`Need ${this._missingCostText(BUILD_COSTS.garden)} to start a garden. Gather resources first.`, "warn");
+      return false;
+    }
+
+    const foodYield = 5 + Math.min(4, Math.floor(island.humans.length / 3)) + Math.min(2, island.plazas.length);
+    this.state.resources.food += foodYield;
+    island.gardens += 1;
+    this.state.gardens += 1;
+    this.state.ecoCare = clamp(this.state.ecoCare + 8, 0, 100);
+    this.state.gatherStrain = Math.max(0, this.state.gatherStrain - 12);
+
+    this._afterPrimaryAction(`Garden started. +${foodYield} food and harmony support increased.`, "success");
+    return true;
+  }
+
+  plantTrees() {
+    if (!this.state.civilizationUnlocked) {
+      this._notify("Bring humans first, then start reforestation.", "warn");
+      return false;
+    }
+
+    const island = this._focusIslandForBuilding();
+    if (!island) {
+      return false;
+    }
+
+    if (island.trees.length >= this.performancePreset.maxTreesPerIsland) {
+      this._notify("This island is already at its tree capacity. Expand or choose another island.", "warn");
+      return false;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.plantTrees)) {
+      this._notify(`Need ${this._missingCostText(BUILD_COSTS.plantTrees)} to plant trees. Gather resources first.`, "warn");
+      return false;
+    }
+
+    const planted = this._plantTreesOnIsland(island, 2 + (this.state.items.tools > 0 ? 1 : 0));
+    this.state.treesPlanted += planted;
+    this.state.ecoCare = clamp(this.state.ecoCare + 11, 0, 100);
+    this.state.gatherStrain = Math.max(0, this.state.gatherStrain - 14);
+
+    this._afterPrimaryAction(`Reforestation success. ${planted} new trees planted.`, "success");
+    return true;
+  }
+
+  careForAnimals() {
+    if (!this.state.civilizationUnlocked) {
+      this._notify("Bring humans first so they can care for animals.", "warn");
+      return false;
+    }
+
+    const island = this._focusIslandForBuilding();
+    if (!island) {
+      return false;
+    }
+
+    const atLandCap = island.animals.length >= this.performancePreset.maxAnimalsPerIsland;
+    const atFishCap = island.fish.length >= this.performancePreset.maxFishPerIsland;
+    if (atLandCap && atFishCap) {
+      this._notify("Wildlife is thriving here already. Choose another island to expand care.", "warn");
+      return false;
+    }
+
+    if (!this._spendCost(BUILD_COSTS.careAnimals)) {
+      this._notify(
+        `Need ${this._missingCostText(BUILD_COSTS.careAnimals)} to support wildlife care. Gather resources first.`,
+        "warn"
+      );
+      return false;
+    }
+
+    const landBefore = island.animals.length;
+    const fishBefore = island.fish.length;
+    this._spawnAnimals(island, island.animals.length + 1 + (Math.random() < 0.45 ? 1 : 0));
+    this._spawnFish(island, island.fish.length + 2);
+
+    const landAdded = island.animals.length - landBefore;
+    const fishAdded = island.fish.length - fishBefore;
+    this.state.careActions += 1;
+    this.state.ecoCare = clamp(this.state.ecoCare + 9, 0, 100);
+    this.state.gatherStrain = Math.max(0, this.state.gatherStrain - 10);
+
+    this._afterPrimaryAction(`Animal care completed. +${landAdded} land animals and +${fishAdded} fish joined.`, "success");
     return true;
   }
 
   buildHut() {
     if (!this.state.civilizationUnlocked) {
-      this.log("Bring the first humans before building huts.");
+      this._notify("Bring the first humans before building huts.", "warn");
       return false;
     }
 
@@ -1417,12 +1780,17 @@ class IslandGame {
     }
 
     if (island.huts.length >= this.performancePreset.maxHutsPerIsland) {
-      this.log("This island is at its hut cap for the current quality setting.");
+      this._notify("This island is at its hut cap for the current quality setting.", "warn");
       return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.hut)) {
-      this.log(`Need: ${this._costToText(BUILD_COSTS.hut)}.`);
+      const missing = this._missingCost(BUILD_COSTS.hut);
+      if (missing.wood) {
+        this._notify(`Not enough wood for a hut. Gather ${missing.wood} more wood first.`, "warn");
+      } else {
+        this._notify(`Need ${this._missingCostText(BUILD_COSTS.hut)} for a hut. Gather resources first.`, "warn");
+      }
       return false;
     }
 
@@ -1433,7 +1801,7 @@ class IslandGame {
 
   buildVillagePlaza() {
     if (!this.state.civilizationUnlocked) {
-      this.log("Bring humans first, then establish a village plaza.");
+      this._notify("Bring humans first, then establish a village plaza.", "warn");
       return false;
     }
 
@@ -1443,17 +1811,17 @@ class IslandGame {
     }
 
     if (island.huts.length < 3) {
-      this.log("Build at least 3 huts on this island before a village plaza.");
+      this._notify("Build at least 3 huts on this island before a village plaza.", "warn");
       return false;
     }
 
     if (island.plazas.length >= this.performancePreset.maxPlazasPerIsland) {
-      this.log("This island is already at the village plaza cap.");
+      this._notify("This island is already at the village plaza cap.", "warn");
       return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.plaza)) {
-      this.log(`Need: ${this._costToText(BUILD_COSTS.plaza)}.`);
+      this._notify(`Need ${this._missingCostText(BUILD_COSTS.plaza)} before building a plaza.`, "warn");
       return false;
     }
 
@@ -1486,12 +1854,12 @@ class IslandGame {
 
   craftToolKit() {
     if (!this.state.civilizationUnlocked) {
-      this.log("Bring humans first, then craft tool kits.");
+      this._notify("Bring humans first, then craft tool kits.", "warn");
       return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.tools)) {
-      this.log(`Need: ${this._costToText(BUILD_COSTS.tools)}.`);
+      this._notify(`Need ${this._missingCostText(BUILD_COSTS.tools)} before crafting tools.`, "warn");
       return false;
     }
 
@@ -1502,12 +1870,12 @@ class IslandGame {
 
   craftCanoe() {
     if (!this.state.civilizationUnlocked) {
-      this.log("Bring humans first, then craft canoes.");
+      this._notify("Bring humans first, then craft canoes.", "warn");
       return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.canoe)) {
-      this.log(`Need: ${this._costToText(BUILD_COSTS.canoe)}.`);
+      this._notify(`Need ${this._missingCostText(BUILD_COSTS.canoe)} before crafting a canoe.`, "warn");
       return false;
     }
 
@@ -1518,17 +1886,17 @@ class IslandGame {
 
   sailToNewIsland() {
     if (!this.state.sailUnlocked) {
-      this.log("Sailing is still locked. Hold harmony and complete village goals first.");
+      this._notify("Sailing is still locked. Hold harmony and complete village goals first.", "warn");
       return false;
     }
 
     if (this.state.items.canoes < 1) {
-      this.log("Craft a canoe before launching to another island.");
+      this._notify("Craft a canoe before launching to another island.", "warn");
       return false;
     }
 
     if (this.islands.length >= this.performancePreset.maxIslands) {
-      this.log("Map limit reached for this quality setting.");
+      this._notify("Map limit reached for this quality setting.", "warn");
       return false;
     }
 
@@ -1611,6 +1979,9 @@ class IslandGame {
 
     const baseAnimals = Math.max(5, Math.round(4 + radius * 0.12));
     this._spawnAnimals(island, baseAnimals);
+
+    const baseFish = Math.max(6, Math.round(5 + radius * 0.13));
+    this._spawnFish(island, baseFish);
 
     return island;
   }
@@ -1774,7 +2145,8 @@ class IslandGame {
     const cappedCount = Math.min(count, this.performancePreset.maxAnimalsPerIsland);
     while (island.animals.length < cappedCount) {
       const point = island.randomLandPoint(this.state.waterLevel + 0.4, this.state.waterLevel + 12);
-      const mesh = createAnimalMesh();
+      const species = ANIMAL_SPECIES[Math.floor(Math.random() * ANIMAL_SPECIES.length)];
+      const { mesh, speciesKey, speciesLabel, speedRange } = createAnimalMesh(species);
       mesh.traverse((node) => {
         if (node.isMesh) {
           node.castShadow = this.performancePreset.shadows;
@@ -1787,14 +2159,47 @@ class IslandGame {
       const animal = {
         island,
         mesh,
+        species: speciesKey,
+        speciesLabel,
         localPosition: new THREE.Vector2(point.lx, point.lz),
         targetPosition: new THREE.Vector2(target.lx, target.lz),
-        speed: lerp(0.7, 1.6, Math.random()),
+        speed: lerp(speedRange[0], speedRange[1], Math.random()),
         bobOffset: Math.random() * Math.PI * 2
       };
 
       island.animals.push(animal);
       this.animals.push(animal);
+    }
+  }
+
+  _spawnFish(island, count) {
+    const cappedCount = Math.min(count, this.performancePreset.maxFishPerIsland);
+    while (island.fish.length < cappedCount) {
+      const species = FISH_SPECIES[Math.floor(Math.random() * FISH_SPECIES.length)];
+      const { mesh, speciesKey, speciesLabel, speedRange } = createFishMesh(species);
+      mesh.traverse((node) => {
+        if (node.isMesh) {
+          node.castShadow = this.performancePreset.shadows;
+        }
+      });
+      this.scene.add(mesh);
+
+      const orbitRadius = island.radius * lerp(0.78, 1.28, Math.random());
+      const fish = {
+        island,
+        mesh,
+        species: speciesKey,
+        speciesLabel,
+        orbitRadius,
+        angle: Math.random() * Math.PI * 2,
+        turnDir: Math.random() < 0.5 ? -1 : 1,
+        speed: lerp(speedRange[0], speedRange[1], Math.random()),
+        depth: lerp(0.45, 1.45, Math.random()),
+        bobOffset: Math.random() * Math.PI * 2
+      };
+
+      island.fish.push(fish);
+      this.fish.push(fish);
     }
   }
 
@@ -1833,9 +2238,41 @@ class IslandGame {
     }
   }
 
+  _updateFish(delta, elapsed) {
+    for (const fish of this.fish) {
+      const island = fish.island;
+      fish.angle += fish.turnDir * fish.speed * delta * 0.72;
+
+      let localX = Math.cos(fish.angle) * fish.orbitRadius;
+      let localZ = Math.sin(fish.angle) * fish.orbitRadius;
+      let seabed = island.sampleHeightLocal(localX, localZ);
+
+      if (seabed > this.state.waterLevel - 0.05) {
+        fish.orbitRadius = clamp(
+          fish.orbitRadius + lerp(1.8, 4.4, Math.random()),
+          island.radius * 0.84,
+          island.radius * 1.35
+        );
+        localX = Math.cos(fish.angle) * fish.orbitRadius;
+        localZ = Math.sin(fish.angle) * fish.orbitRadius;
+        seabed = island.sampleHeightLocal(localX, localZ);
+      }
+
+      const worldX = island.center.x + localX * island.scale;
+      const worldZ = island.center.z + localZ * island.scale;
+      const waterTop = this.state.waterLevel + Math.sin(elapsed * 0.9) * 0.05;
+      const minHeight = seabed + 0.22;
+      const targetY = clamp(waterTop - fish.depth, minHeight, waterTop - 0.05);
+
+      fish.mesh.position.set(worldX, targetY + Math.sin(elapsed * 2 + fish.bobOffset) * 0.02, worldZ);
+      fish.mesh.rotation.y = fish.turnDir > 0 ? -fish.angle + Math.PI * 0.5 : -fish.angle - Math.PI * 0.5;
+      fish.mesh.rotation.z = Math.sin(elapsed * 4.2 + fish.bobOffset) * 0.08;
+    }
+  }
+
   unlockHumans() {
     if (this.state.civilizationUnlocked) {
-      this.log("Humans are already here. Keep the islands balanced while they grow.");
+      this._notify("Humans are already here. Keep balance with gardens, tree planting, and animal care.", "info");
       return false;
     }
 
@@ -1845,7 +2282,10 @@ class IslandGame {
     this._spawnSettlement(seedIsland, 3, 1);
 
     this.controlsRef.bringHumans.textContent = "Humans Arrived";
-    this._afterPrimaryAction("The first voyagers arrived. Start building your village.", "success");
+    this._afterPrimaryAction(
+      "The first voyagers arrived. Start with huts, then support harmony with gardens and wildlife care.",
+      "success"
+    );
     return true;
   }
 
@@ -2120,6 +2560,7 @@ class IslandGame {
   _harmonyScore() {
     const islandCount = this.islands.length;
     const animalCount = this.animals.length;
+    const fishCount = this.fish.length;
     const humanCount = this.humans.length;
     const hutCount = this.huts.length;
     const plazaCount = this.villagePlazas.length;
@@ -2133,24 +2574,52 @@ class IslandGame {
       }
     }
 
-    const treeScore = clamp((rootedTrees / Math.max(1, islandCount * 55)) * 26, 0, 26);
-    const animalScore = clamp((animalCount / Math.max(1, islandCount * 6)) * 18, 0, 18);
+    const species = new Set();
+    for (const animal of this.animals) {
+      species.add(animal.species);
+    }
+    for (const fish of this.fish) {
+      species.add(fish.species);
+    }
+
+    const treeScore = clamp((rootedTrees / Math.max(1, islandCount * 55)) * 24, 0, 24);
+    const animalScore = clamp((animalCount / Math.max(1, islandCount * 6)) * 16, 0, 16);
+    const fishScore = clamp((fishCount / Math.max(1, islandCount * 9)) * 8, 0, 8);
+    const speciesScore = clamp(species.size * 2.6, 0, 10);
     const villageScore = clamp(plazaCount * 6, 0, 12);
     const toolScore = clamp(this.state.items.tools * 2.5, 0, 10);
     const bridgeScore = clamp((this.bridges.length / Math.max(1, islandCount - 1)) * 8, 0, 8);
+    const careBonus = clamp(this.state.ecoCare * 0.18, 0, 13);
 
     const capacity = Math.max(
       10,
-      rootedTrees * 0.22 + animalCount * 0.8 + hutCount * 2 + plazaCount * 6 + this.state.items.tools * 1.2
+      rootedTrees * 0.22 +
+        animalCount * 0.8 +
+        fishCount * 0.42 +
+        hutCount * 2 +
+        plazaCount * 6 +
+        this.state.items.tools * 1.2
     );
     const pressurePenalty = clamp((humanCount / capacity) * 36, 0, 32);
 
     const floodedHuts = this.huts.filter((hut) => hut.flooded).length;
     const floodedPlazas = this.villagePlazas.filter((plaza) => plaza.flooded).length;
     const floodPenalty = floodedHuts * 5 + floodedPlazas * 8;
+    const gatherPenalty = clamp(this.state.gatherStrain * 0.42, 0, 35);
 
     this.state.harmony = clamp(
-      28 + treeScore + animalScore + villageScore + toolScore + bridgeScore - pressurePenalty - floodPenalty,
+      18 +
+        treeScore +
+        animalScore +
+        fishScore +
+        speciesScore +
+        villageScore +
+        toolScore +
+        bridgeScore +
+        careBonus -
+        pressurePenalty -
+        floodPenalty -
+        gatherPenalty,
       0,
       100
     );
@@ -2220,14 +2689,27 @@ class IslandGame {
   }
 
   _updateStatusUI() {
+    const speciesSet = new Set();
+    for (const animal of this.animals) {
+      speciesSet.add(animal.species);
+    }
+    for (const fish of this.fish) {
+      speciesSet.add(fish.species);
+    }
+
     this._setDisplayValue("statIslands", this.islands.length, this.controlsRef.statIslands);
     this._setDisplayValue("statAnimals", this.animals.length, this.controlsRef.statAnimals);
+    this._setDisplayValue("statFish", this.fish.length, this.controlsRef.statFish);
+    this._setDisplayValue("statSpecies", speciesSet.size, this.controlsRef.statSpecies);
     this._setDisplayValue("statHumans", this.humans.length, this.controlsRef.statHumans);
     this._setDisplayValue("statHuts", this.huts.length, this.controlsRef.statHuts);
     this._setDisplayValue("statPlazas", this.villagePlazas.length, this.controlsRef.statPlazas);
+    this._setDisplayValue("statGardens", this.state.gardens, this.controlsRef.statGardens);
     this._setDisplayValue("hudHumans", this.humans.length, this.controlsRef.hudHumans);
     this._setDisplayValue("hudHuts", this.huts.length, this.controlsRef.hudHuts);
     this._setDisplayValue("hudPlazas", this.villagePlazas.length, this.controlsRef.hudPlazas);
+    this._setDisplayValue("hudFish", this.fish.length, this.controlsRef.hudFish);
+    this._setDisplayValue("hudSpecies", speciesSet.size, this.controlsRef.hudSpecies);
 
     const harmony = Math.round(this._harmonyScore());
     this._setDisplayValue("harmonyScore", harmony, this.controlsRef.harmonyScore);
@@ -2274,6 +2756,7 @@ class IslandGame {
     if (doSimulation) {
       const scaledDelta = delta * this.performancePreset.simulationStride;
       this._updateAnimals(scaledDelta, elapsed);
+      this._updateFish(scaledDelta, elapsed);
       this._updateHutsAndHumans(scaledDelta);
     }
 
@@ -2284,6 +2767,8 @@ class IslandGame {
     }
 
     this.state.gatherCooldown = Math.max(0, this.state.gatherCooldown - delta);
+    this.state.gatherStrain = Math.max(0, this.state.gatherStrain - delta * (this.state.gardens > 0 ? 1.15 : 0.75));
+    this.state.ecoCare = Math.max(0, this.state.ecoCare - delta * 0.28);
     if (this.state.civilizationUnlocked) {
       this.resourceDripAccumulator += delta;
       if (this.resourceDripAccumulator >= 16) {
@@ -2295,9 +2780,18 @@ class IslandGame {
     this._harmonyScore();
     this._updatePhaseAndSailing(delta);
     this.lowHarmonyNoticeCooldown = Math.max(0, this.lowHarmonyNoticeCooldown - delta);
+    this.highStrainNoticeCooldown = Math.max(0, this.highStrainNoticeCooldown - delta);
     if (this.state.civilizationUnlocked && this.state.harmony < 58 && this.lowHarmonyNoticeCooldown <= 0) {
       this.lowHarmonyNoticeCooldown = 18;
       this.log("Harmony is dropping. Add resources and avoid flooding to stabilize the island.", {
+        toast: true,
+        tone: "warn"
+      });
+    }
+
+    if (this.state.civilizationUnlocked && this.state.gatherStrain > 64 && this.highStrainNoticeCooldown <= 0) {
+      this.highStrainNoticeCooldown = 14;
+      this.log("Over-harvesting is hurting harmony. Slow gathering and use gardening/tree care actions.", {
         toast: true,
         tone: "warn"
       });
