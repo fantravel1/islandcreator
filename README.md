@@ -15,7 +15,9 @@ A browser-first 3D island builder where you sculpt terrain in quasi God Mode, tu
 - Use the top **Sculpt / Camera** switch.
 - In **Sculpt** mode, drag to shape terrain.
 - In **Camera** mode, drag to orbit and pinch to zoom.
-- On phones, tap **Controls** to open/close the bottom-sheet panel.
+- On phones, live stats/resources stay docked at the bottom.
+- Tap **Controls** under the stats to open the builder sheet.
+- After successful gather/build/craft actions, the sheet auto-minimizes so you can watch the island update.
 
 ## Run locally
 

@@ -12,11 +12,15 @@ app.innerHTML = `
         <button id="mode-sculpt" class="mode-btn" type="button">Sculpt</button>
         <button id="mode-camera" class="mode-btn" type="button">Camera</button>
       </div>
-      <button id="panel-toggle" class="panel-toggle" type="button">Controls</button>
     </div>
 
+    <div class="message-stack" id="message-stack" aria-live="polite"></div>
+
     <aside class="control-panel" id="control-panel">
-      <h1>Archipelago Genesis</h1>
+      <div class="panel-header">
+        <h1>Archipelago Genesis</h1>
+        <button id="panel-close" class="panel-close" type="button">Close</button>
+      </div>
       <p class="tagline">Mobile-first God Mode island builder</p>
 
       <section>
@@ -126,6 +130,30 @@ app.innerHTML = `
         <ul id="event-log"></ul>
       </section>
     </aside>
+
+    <div class="bottom-hud" id="bottom-hud">
+      <div class="hud-shell">
+        <div class="hud-row hud-primary">
+          <div class="hud-chip"><span>Phase</span><strong id="hud-phase">Founding</strong></div>
+          <div class="hud-chip"><span>Harmony</span><strong id="hud-harmony">0</strong></div>
+          <div class="hud-chip"><span>Humans</span><strong id="hud-humans">0</strong></div>
+          <div class="hud-chip"><span>Huts</span><strong id="hud-huts">0</strong></div>
+          <div class="hud-chip"><span>Plazas</span><strong id="hud-plazas">0</strong></div>
+        </div>
+        <div class="hud-harmony-track">
+          <div id="hud-harmony-fill"></div>
+        </div>
+        <div class="hud-row hud-resources">
+          <div class="hud-chip"><span>Wood</span><strong id="hud-wood">0</strong></div>
+          <div class="hud-chip"><span>Stone</span><strong id="hud-stone">0</strong></div>
+          <div class="hud-chip"><span>Food</span><strong id="hud-food">0</strong></div>
+          <div class="hud-chip"><span>Tools</span><strong id="hud-tools">0</strong></div>
+          <div class="hud-chip"><span>Canoes</span><strong id="hud-canoes">0</strong></div>
+        </div>
+        <p class="hud-note">Keep harmony high to unlock sailing.</p>
+      </div>
+      <button id="panel-toggle" class="panel-toggle" type="button" aria-expanded="false">Controls</button>
+    </div>
   </div>
 `;
 
@@ -655,10 +683,24 @@ class IslandGame {
     this.performancePreset = QUALITY_PRESETS[this.autoQuality];
 
     this.controlsRef = {
+      bottomHud: document.getElementById("bottom-hud"),
+      messageStack: document.getElementById("message-stack"),
       controlPanel: document.getElementById("control-panel"),
       panelToggle: document.getElementById("panel-toggle"),
+      panelClose: document.getElementById("panel-close"),
       modeSculpt: document.getElementById("mode-sculpt"),
       modeCamera: document.getElementById("mode-camera"),
+      hudPhase: document.getElementById("hud-phase"),
+      hudHarmony: document.getElementById("hud-harmony"),
+      hudHarmonyFill: document.getElementById("hud-harmony-fill"),
+      hudHumans: document.getElementById("hud-humans"),
+      hudHuts: document.getElementById("hud-huts"),
+      hudPlazas: document.getElementById("hud-plazas"),
+      hudWood: document.getElementById("hud-wood"),
+      hudStone: document.getElementById("hud-stone"),
+      hudFood: document.getElementById("hud-food"),
+      hudTools: document.getElementById("hud-tools"),
+      hudCanoes: document.getElementById("hud-canoes"),
       hintText: document.getElementById("hint-text"),
       qualityLevel: document.getElementById("quality-level"),
       qualityHint: document.getElementById("quality-hint"),
@@ -749,7 +791,9 @@ class IslandGame {
     this.ecologyRefreshAccumulator = 0;
     this.lodAccumulator = 0;
     this.resourceDripAccumulator = 0;
+    this.lowHarmonyNoticeCooldown = 0;
     this.frameCounter = 0;
+    this.displayCache = {};
 
     this._setupScene();
     this._bindUI();
@@ -814,8 +858,10 @@ class IslandGame {
     this.state.panelCollapsed = collapsed;
     this.controlsRef.controlPanel.classList.toggle("collapsed", collapsed);
     if (syncButton) {
-      this.controlsRef.panelToggle.textContent = collapsed ? "Controls" : "Hide";
+      this.controlsRef.panelToggle.textContent = collapsed ? "Controls" : "Hide Controls";
     }
+    this.controlsRef.panelToggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    document.body.classList.toggle("panel-open", !collapsed && this.isMobile);
   }
 
   _togglePanel() {
@@ -981,8 +1027,18 @@ class IslandGame {
       this.camera.updateProjectionMatrix();
       this.renderer.setSize(this.viewport.clientWidth, this.viewport.clientHeight);
       this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.performancePreset.pixelRatioCap));
+      const wasMobile = this.isMobile;
       this.isMobile = COARSE_POINTER || window.innerWidth <= 920;
       document.body.classList.toggle("touch-ui", this.isMobile);
+      if (wasMobile !== this.isMobile) {
+        if (this.isMobile) {
+          this._setPanelCollapsed(true, false);
+        } else {
+          this._setPanelCollapsed(false, false);
+        }
+      } else {
+        this._setPanelCollapsed(this.state.panelCollapsed, false);
+      }
     });
 
     this.renderer.domElement.addEventListener("pointerdown", (event) => this._onViewportPointerDown(event));
@@ -1037,6 +1093,7 @@ class IslandGame {
     this.controlsRef.modeCamera.addEventListener("click", () => this._setInteractionMode("camera"));
 
     this.controlsRef.panelToggle.addEventListener("click", () => this._togglePanel());
+    this.controlsRef.panelClose.addEventListener("click", () => this._setPanelCollapsed(true));
 
     this.controlsRef.qualityLevel.addEventListener("change", (event) => {
       this._applyQualitySetting(event.target.value);
@@ -1137,7 +1194,7 @@ class IslandGame {
     this._updateBuilderUI();
   }
 
-  log(message) {
+  log(message, options = {}) {
     const item = document.createElement("li");
     const now = new Date();
     const time = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -1146,6 +1203,66 @@ class IslandGame {
 
     while (this.controlsRef.eventLog.children.length > 10) {
       this.controlsRef.eventLog.removeChild(this.controlsRef.eventLog.lastChild);
+    }
+
+    if (options.toast) {
+      this._pushToast(message, options.tone ?? "info");
+    }
+  }
+
+  _pushToast(message, tone = "info") {
+    const toast = document.createElement("div");
+    toast.className = `toast toast-${tone}`;
+    toast.textContent = message;
+    this.controlsRef.messageStack.appendChild(toast);
+
+    requestAnimationFrame(() => toast.classList.add("show"));
+
+    setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.parentElement.removeChild(toast);
+        }
+      }, 220);
+    }, 2300);
+  }
+
+  _pulseValue(el, direction = "up") {
+    if (!el) {
+      return;
+    }
+    const className = direction === "down" ? "pulse-down" : "pulse-up";
+    el.classList.remove("pulse-up", "pulse-down");
+    void el.offsetWidth;
+    el.classList.add(className);
+    if (el._pulseTimer) {
+      clearTimeout(el._pulseTimer);
+    }
+    el._pulseTimer = setTimeout(() => {
+      el.classList.remove("pulse-up", "pulse-down");
+    }, 520);
+  }
+
+  _setDisplayValue(key, value, el) {
+    const prev = this.displayCache[key];
+    el.textContent = String(value);
+    if (typeof value === "number" && Number.isFinite(prev)) {
+      if (value > prev) {
+        this._pulseValue(el, "up");
+      } else if (value < prev) {
+        this._pulseValue(el, "down");
+      }
+    } else if (typeof value === "string" && prev !== undefined && prev !== value) {
+      this._pulseValue(el, "up");
+    }
+    this.displayCache[key] = value;
+  }
+
+  _afterPrimaryAction(message, tone = "success") {
+    this.log(message, { toast: true, tone });
+    if (this.isMobile) {
+      this._setPanelCollapsed(true);
     }
   }
 
@@ -1201,13 +1318,20 @@ class IslandGame {
   }
 
   _updateBuilderUI() {
-    this.controlsRef.resourceWood.textContent = String(this.state.resources.wood);
-    this.controlsRef.resourceStone.textContent = String(this.state.resources.stone);
-    this.controlsRef.resourceFiber.textContent = String(this.state.resources.fiber);
-    this.controlsRef.resourceFood.textContent = String(this.state.resources.food);
-    this.controlsRef.itemTools.textContent = String(this.state.items.tools);
-    this.controlsRef.itemCanoes.textContent = String(this.state.items.canoes);
-    this.controlsRef.phaseLabel.textContent = this.state.phaseLabel;
+    this._setDisplayValue("resourceWood", this.state.resources.wood, this.controlsRef.resourceWood);
+    this._setDisplayValue("resourceStone", this.state.resources.stone, this.controlsRef.resourceStone);
+    this._setDisplayValue("resourceFiber", this.state.resources.fiber, this.controlsRef.resourceFiber);
+    this._setDisplayValue("resourceFood", this.state.resources.food, this.controlsRef.resourceFood);
+    this._setDisplayValue("itemTools", this.state.items.tools, this.controlsRef.itemTools);
+    this._setDisplayValue("itemCanoes", this.state.items.canoes, this.controlsRef.itemCanoes);
+    this._setDisplayValue("phaseLabel", this.state.phaseLabel, this.controlsRef.phaseLabel);
+
+    this._setDisplayValue("hudPhase", this.state.phaseLabel, this.controlsRef.hudPhase);
+    this._setDisplayValue("hudWood", this.state.resources.wood, this.controlsRef.hudWood);
+    this._setDisplayValue("hudStone", this.state.resources.stone, this.controlsRef.hudStone);
+    this._setDisplayValue("hudFood", this.state.resources.food, this.controlsRef.hudFood);
+    this._setDisplayValue("hudTools", this.state.items.tools, this.controlsRef.hudTools);
+    this._setDisplayValue("hudCanoes", this.state.items.canoes, this.controlsRef.hudCanoes);
 
     const civReady = this.state.civilizationUnlocked;
     const gatherCooldown = Math.ceil(this.state.gatherCooldown);
@@ -1246,12 +1370,12 @@ class IslandGame {
       if (manual) {
         this.log("Bring humans first so someone can gather materials.");
       }
-      return;
+      return false;
     }
 
     if (manual && this.state.gatherCooldown > 0) {
       this.log("Gatherers are still out. Try again in a moment.");
-      return;
+      return false;
     }
 
     const island = this._primaryIsland();
@@ -1269,7 +1393,7 @@ class IslandGame {
         food: 2 + Math.min(3, Math.floor((animalCount + peopleCount) / 6))
       });
       this.state.gatherCooldown = 4;
-      this.log("Gathering team returned with supplies.");
+      this._afterPrimaryAction("Great gathering run. New supplies reached the village.", "success");
     } else {
       this._gainResources({
         wood: 1 + Math.min(1, hutCount),
@@ -1278,57 +1402,59 @@ class IslandGame {
         food: 1 + Math.min(1, plazaCount)
       });
     }
+    return true;
   }
 
   buildHut() {
     if (!this.state.civilizationUnlocked) {
       this.log("Bring the first humans before building huts.");
-      return;
+      return false;
     }
 
     const island = this._focusIslandForBuilding();
     if (!island) {
-      return;
+      return false;
     }
 
     if (island.huts.length >= this.performancePreset.maxHutsPerIsland) {
       this.log("This island is at its hut cap for the current quality setting.");
-      return;
+      return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.hut)) {
       this.log(`Need: ${this._costToText(BUILD_COSTS.hut)}.`);
-      return;
+      return false;
     }
 
     this._spawnSettlement(island, 1, 1);
-    this.log("A new hut is complete.");
+    this._afterPrimaryAction("Hut complete. Your village just grew.", "success");
+    return true;
   }
 
   buildVillagePlaza() {
     if (!this.state.civilizationUnlocked) {
       this.log("Bring humans first, then establish a village plaza.");
-      return;
+      return false;
     }
 
     const island = this._focusIslandForBuilding();
     if (!island) {
-      return;
+      return false;
     }
 
     if (island.huts.length < 3) {
       this.log("Build at least 3 huts on this island before a village plaza.");
-      return;
+      return false;
     }
 
     if (island.plazas.length >= this.performancePreset.maxPlazasPerIsland) {
       this.log("This island is already at the village plaza cap.");
-      return;
+      return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.plaza)) {
       this.log(`Need: ${this._costToText(BUILD_COSTS.plaza)}.`);
-      return;
+      return false;
     }
 
     const point = island.randomLandPoint(this.state.waterLevel + 0.8, this.state.waterLevel + 9);
@@ -1354,67 +1480,71 @@ class IslandGame {
     island.needsObjectReposition = true;
 
     this._spawnSettlement(island, 2, 0);
-    this.log("Village plaza raised. Community life is stabilizing.");
+    this._afterPrimaryAction("Village plaza raised. Community harmony is strengthening.", "success");
+    return true;
   }
 
   craftToolKit() {
     if (!this.state.civilizationUnlocked) {
       this.log("Bring humans first, then craft tool kits.");
-      return;
+      return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.tools)) {
       this.log(`Need: ${this._costToText(BUILD_COSTS.tools)}.`);
-      return;
+      return false;
     }
 
     this.state.items.tools += 1;
-    this.log("Tool kit crafted. Building efficiency improved.");
+    this._afterPrimaryAction("Tool kit crafted. Builders can work smarter now.", "success");
+    return true;
   }
 
   craftCanoe() {
     if (!this.state.civilizationUnlocked) {
       this.log("Bring humans first, then craft canoes.");
-      return;
+      return false;
     }
 
     if (!this._spendCost(BUILD_COSTS.canoe)) {
       this.log(`Need: ${this._costToText(BUILD_COSTS.canoe)}.`);
-      return;
+      return false;
     }
 
     this.state.items.canoes += 1;
-    this.log("A canoe is ready at the shoreline.");
+    this._afterPrimaryAction("Canoe launched. Sailing prep is complete.", "success");
+    return true;
   }
 
   sailToNewIsland() {
     if (!this.state.sailUnlocked) {
       this.log("Sailing is still locked. Hold harmony and complete village goals first.");
-      return;
+      return false;
     }
 
     if (this.state.items.canoes < 1) {
       this.log("Craft a canoe before launching to another island.");
-      return;
+      return false;
     }
 
     if (this.islands.length >= this.performancePreset.maxIslands) {
       this.log("Map limit reached for this quality setting.");
-      return;
+      return false;
     }
 
     this.state.items.canoes -= 1;
     const island = this.addConnectedIsland(false);
     if (!island) {
       this.state.items.canoes += 1;
-      return;
+      return false;
     }
 
     if (this.state.civilizationUnlocked) {
       this._spawnSettlement(island, 2, 1);
     }
 
-    this.log("Settlers sailed safely and started co-building a new island.");
+    this._afterPrimaryAction("Voyagers landed safely. Co-building has begun on a new island.", "success");
+    return true;
   }
 
   _updatePhaseAndSailing(delta) {
@@ -1446,7 +1576,7 @@ class IslandGame {
       if (this.state.harmonyGateSeconds >= 30) {
         this.state.sailUnlocked = true;
         this.state.phaseLabel = "Ready to Sail";
-        this.log("Harmony held. Sailing routes are now unlocked.");
+        this.log("Harmony held. Sailing routes are now unlocked.", { toast: true, tone: "success" });
       }
     }
   }
@@ -1706,7 +1836,7 @@ class IslandGame {
   unlockHumans() {
     if (this.state.civilizationUnlocked) {
       this.log("Humans are already here. Keep the islands balanced while they grow.");
-      return;
+      return false;
     }
 
     this.state.civilizationUnlocked = true;
@@ -1715,7 +1845,8 @@ class IslandGame {
     this._spawnSettlement(seedIsland, 3, 1);
 
     this.controlsRef.bringHumans.textContent = "Humans Arrived";
-    this.log("The first voyagers landed. Begin gathering, building, and crafting.");
+    this._afterPrimaryAction("The first voyagers arrived. Start building your village.", "success");
+    return true;
   }
 
   _spawnSettlement(island, humanCount, hutCount) {
@@ -2089,15 +2220,20 @@ class IslandGame {
   }
 
   _updateStatusUI() {
-    this.controlsRef.statIslands.textContent = String(this.islands.length);
-    this.controlsRef.statAnimals.textContent = String(this.animals.length);
-    this.controlsRef.statHumans.textContent = String(this.humans.length);
-    this.controlsRef.statHuts.textContent = String(this.huts.length);
-    this.controlsRef.statPlazas.textContent = String(this.villagePlazas.length);
+    this._setDisplayValue("statIslands", this.islands.length, this.controlsRef.statIslands);
+    this._setDisplayValue("statAnimals", this.animals.length, this.controlsRef.statAnimals);
+    this._setDisplayValue("statHumans", this.humans.length, this.controlsRef.statHumans);
+    this._setDisplayValue("statHuts", this.huts.length, this.controlsRef.statHuts);
+    this._setDisplayValue("statPlazas", this.villagePlazas.length, this.controlsRef.statPlazas);
+    this._setDisplayValue("hudHumans", this.humans.length, this.controlsRef.hudHumans);
+    this._setDisplayValue("hudHuts", this.huts.length, this.controlsRef.hudHuts);
+    this._setDisplayValue("hudPlazas", this.villagePlazas.length, this.controlsRef.hudPlazas);
 
     const harmony = Math.round(this._harmonyScore());
-    this.controlsRef.harmonyScore.textContent = String(harmony);
+    this._setDisplayValue("harmonyScore", harmony, this.controlsRef.harmonyScore);
+    this._setDisplayValue("hudHarmony", harmony, this.controlsRef.hudHarmony);
     this.controlsRef.harmonyFill.style.width = `${harmony}%`;
+    this.controlsRef.hudHarmonyFill.style.width = `${harmony}%`;
     this._updateBuilderUI();
   }
 
@@ -2158,6 +2294,14 @@ class IslandGame {
 
     this._harmonyScore();
     this._updatePhaseAndSailing(delta);
+    this.lowHarmonyNoticeCooldown = Math.max(0, this.lowHarmonyNoticeCooldown - delta);
+    if (this.state.civilizationUnlocked && this.state.harmony < 58 && this.lowHarmonyNoticeCooldown <= 0) {
+      this.lowHarmonyNoticeCooldown = 18;
+      this.log("Harmony is dropping. Add resources and avoid flooding to stabilize the island.", {
+        toast: true,
+        tone: "warn"
+      });
+    }
 
     this.statusAccumulator += delta;
     if (this.statusAccumulator > 0.2) {
